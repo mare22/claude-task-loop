@@ -1,0 +1,312 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Task Board</title>
+<style>
+  *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+  :root{
+    --bg:#0a0a1a;--surface:#111827;--surface2:#1a2332;--surface3:#243044;
+    --border:#2a3a50;--text:#e2e8f0;--text2:#94a3b8;--text3:#64748b;
+    --cyan:#22d3ee;--mint:#3deaa0;--red:#ff6b6b;--amber:#fbbf24;--purple:#a78bfa;
+    --cyan10:rgba(34,211,238,.1);--mint10:rgba(61,234,160,.1);--red10:rgba(255,107,107,.1);
+    --amber10:rgba(251,191,36,.1);--purple10:rgba(167,139,250,.1);
+  }
+  body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:var(--bg);color:var(--text);min-height:100vh}
+
+  /* Header */
+  .header{padding:24px 32px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:16px}
+  .header h1{font-size:20px;font-weight:700;letter-spacing:-.3px}
+  .header .project-badge{background:var(--purple10);color:var(--purple);padding:4px 12px;border-radius:20px;font-size:12px;font-weight:600}
+  .header .stats{margin-left:auto;display:flex;gap:16px;font-size:13px;color:var(--text2)}
+  .header .stats span{display:flex;align-items:center;gap:6px}
+  .header .stats .dot{width:8px;height:8px;border-radius:50%;display:inline-block}
+  .dot-todo{background:var(--text3)}.dot-progress{background:var(--amber)}.dot-done{background:var(--mint)}
+
+  /* Board */
+  .board{display:grid;grid-template-columns:1fr 1fr 1fr;gap:20px;padding:24px 32px;height:calc(100vh - 81px);overflow:hidden}
+  .column{background:var(--surface);border-radius:12px;border:1px solid var(--border);display:flex;flex-direction:column;overflow:hidden}
+  .column-header{padding:16px 20px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:10px;flex-shrink:0}
+  .column-header h2{font-size:14px;font-weight:600;text-transform:uppercase;letter-spacing:.5px}
+  .column-header .count{background:var(--surface3);color:var(--text2);font-size:11px;font-weight:700;padding:2px 8px;border-radius:10px}
+  .col-todo .column-header h2{color:var(--text2)}
+  .col-progress .column-header h2{color:var(--amber)}
+  .col-done .column-header h2{color:var(--mint)}
+  .column-body{padding:12px;overflow-y:auto;flex:1;display:flex;flex-direction:column;gap:10px}
+
+  /* Cards */
+  .card{background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:14px 16px;cursor:pointer;transition:border-color .15s,transform .15s,box-shadow .15s}
+  .card:hover{border-color:var(--purple);transform:translateY(-1px);box-shadow:0 4px 20px rgba(167,139,250,.08)}
+  .card-top{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px}
+  .card-id{font-size:11px;font-weight:700;color:var(--purple);font-family:'SF Mono',Monaco,monospace}
+  .card-title{font-size:13px;font-weight:600;line-height:1.4;margin-bottom:10px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+  .card-bottom{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+  .badge{padding:2px 8px;border-radius:6px;font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.3px}
+  .badge-bug{background:var(--red10);color:var(--red)}
+  .badge-feature{background:var(--purple10);color:var(--purple)}
+  .badge-ui{background:var(--cyan10);color:var(--cyan)}
+  .badge-task{background:var(--amber10);color:var(--amber)}
+  .badge-priority{background:var(--surface3);color:var(--text2);font-family:'SF Mono',Monaco,monospace}
+  .card-criteria{font-size:10px;color:var(--text3);margin-left:auto}
+
+  /* Modal overlay */
+  .overlay{position:fixed;inset:0;background:rgba(0,0,0,.6);backdrop-filter:blur(4px);z-index:100;display:none;align-items:center;justify-content:center;padding:32px}
+  .overlay.active{display:flex}
+
+  /* Modal */
+  .modal{background:var(--surface);border:1px solid var(--border);border-radius:16px;width:100%;max-width:720px;max-height:85vh;overflow:hidden;display:flex;flex-direction:column;box-shadow:0 24px 64px rgba(0,0,0,.5)}
+  .modal-header{padding:20px 24px;border-bottom:1px solid var(--border);display:flex;align-items:flex-start;gap:12px;flex-shrink:0}
+  .modal-header-left{flex:1}
+  .modal-header .modal-id{font-size:12px;font-weight:700;color:var(--purple);font-family:'SF Mono',Monaco,monospace;margin-bottom:4px}
+  .modal-header .modal-title{font-size:18px;font-weight:700;line-height:1.3}
+  .modal-close{width:32px;height:32px;border-radius:8px;border:1px solid var(--border);background:var(--surface2);color:var(--text2);cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0;transition:border-color .15s}
+  .modal-close:hover{border-color:var(--purple);color:var(--text)}
+  .modal-body{padding:24px;overflow-y:auto;flex:1}
+
+  .modal-meta{display:flex;gap:10px;margin-bottom:20px;flex-wrap:wrap}
+  .meta-chip{padding:4px 12px;border-radius:8px;font-size:12px;font-weight:600;background:var(--surface3);color:var(--text2)}
+
+  .modal-section{margin-bottom:20px}
+  .modal-section h3{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:var(--text3);margin-bottom:8px}
+  .modal-section p{font-size:13px;line-height:1.6;color:var(--text2)}
+  .modal-section .empty{font-size:13px;color:var(--text3);font-style:italic}
+
+  /* Acceptance criteria */
+  .criteria-list{list-style:none;display:flex;flex-direction:column;gap:6px}
+  .criteria-list li{font-size:13px;color:var(--text2);padding:8px 12px;background:var(--surface2);border-radius:8px;border:1px solid var(--border);display:flex;align-items:flex-start;gap:8px;line-height:1.4}
+  .criteria-list li::before{content:'';width:6px;height:6px;border-radius:50%;background:var(--text3);margin-top:6px;flex-shrink:0}
+
+  /* Progress & test plan */
+  .info-block{background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:14px 16px;font-size:13px;line-height:1.6;color:var(--text2);white-space:pre-wrap}
+
+  /* Notes */
+  .notes-block{font-size:13px;line-height:1.6;color:var(--text2)}
+
+  /* Screenshots */
+  .screenshots-grid{display:flex;gap:10px;flex-wrap:wrap}
+  .screenshots-grid img{max-width:200px;border-radius:8px;border:1px solid var(--border);cursor:pointer;transition:border-color .15s}
+  .screenshots-grid img:hover{border-color:var(--purple)}
+
+  /* Scrollbar */
+  ::-webkit-scrollbar{width:6px}
+  ::-webkit-scrollbar-track{background:transparent}
+  ::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px}
+  ::-webkit-scrollbar-thumb:hover{background:var(--text3)}
+
+  @media(max-width:900px){.board{grid-template-columns:1fr;height:auto}.column{max-height:60vh}}
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>Task Board</h1>
+  <span class="project-badge" id="projectName"></span>
+  <div class="stats">
+    <span><span class="dot dot-todo"></span> Todo: <strong id="statTodo">0</strong></span>
+    <span><span class="dot dot-progress"></span> In Progress: <strong id="statProgress">0</strong></span>
+    <span><span class="dot dot-done"></span> Done: <strong id="statDone">0</strong></span>
+  </div>
+</div>
+
+<div class="board">
+  <div class="column col-todo">
+    <div class="column-header"><h2>Todo</h2><span class="count" id="countTodo">0</span></div>
+    <div class="column-body" id="colTodo"></div>
+  </div>
+  <div class="column col-progress">
+    <div class="column-header"><h2>In Progress</h2><span class="count" id="countProgress">0</span></div>
+    <div class="column-body" id="colProgress"></div>
+  </div>
+  <div class="column col-done">
+    <div class="column-header"><h2>Done</h2><span class="count" id="countDone">0</span></div>
+    <div class="column-body" id="colDone"></div>
+  </div>
+</div>
+
+<div class="overlay" id="overlay">
+  <div class="modal" id="modal">
+    <div class="modal-header">
+      <div class="modal-header-left">
+        <div class="modal-id" id="modalId"></div>
+        <div class="modal-title" id="modalTitle"></div>
+      </div>
+      <button class="modal-close" id="modalClose">&times;</button>
+    </div>
+    <div class="modal-body" id="modalBody"></div>
+  </div>
+</div>
+
+<script>
+let TASKS_DATA = null;
+
+async function loadData() {
+  try {
+    const res = await fetch('./tasks.json');
+    if (res.ok) return await res.json();
+  } catch {}
+  return null;
+}
+
+let refreshTimer = null;
+let listenersAttached = false;
+
+async function init() {
+  TASKS_DATA = await loadData();
+  if (!TASKS_DATA) {
+    document.body.innerHTML = '<div style="padding:48px;text-align:center;color:#94a3b8"><h2>Could not load tasks.json</h2><p style="margin-top:12px">Serve this directory with a local server:<br><code style="color:#a78bfa">npx serve tasks/</code> or <code style="color:#a78bfa">python3 -m http.server 9090 -d tasks</code></p></div>';
+    return;
+  }
+  renderBoard();
+
+  if (!listenersAttached) {
+    document.getElementById('overlay').addEventListener('click', e => {
+      if (e.target === e.currentTarget) closeModal();
+    });
+    document.getElementById('modalClose').addEventListener('click', closeModal);
+    document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal(); });
+    listenersAttached = true;
+  }
+
+  if (!refreshTimer) {
+    refreshTimer = setInterval(refresh, 5000);
+  }
+}
+
+async function refresh() {
+  const fresh = await loadData();
+  if (!fresh) return;
+  TASKS_DATA = fresh;
+  renderBoard();
+  const overlay = document.getElementById('overlay');
+  if (overlay.classList.contains('active')) {
+    const modalId = document.getElementById('modalId').textContent;
+    const task = TASKS_DATA.tasks.find(t => t.id === modalId);
+    if (task) openModal(task.id);
+  }
+}
+
+function renderBoard() {
+  const data = TASKS_DATA;
+  document.getElementById('projectName').textContent = data.project;
+
+  const cols = { todo: [], 'in-progress': [], done: [] };
+  data.tasks.forEach(t => {
+    const s = t.status || 'todo';
+    if (cols[s]) cols[s].push(t); else cols.todo.push(t);
+  });
+
+  Object.values(cols).forEach(arr => arr.sort((a, b) => a.priority - b.priority));
+
+  document.getElementById('statTodo').textContent = cols.todo.length;
+  document.getElementById('statProgress').textContent = cols['in-progress'].length;
+  document.getElementById('statDone').textContent = cols.done.length;
+  document.getElementById('countTodo').textContent = cols.todo.length;
+  document.getElementById('countProgress').textContent = cols['in-progress'].length;
+  document.getElementById('countDone').textContent = cols.done.length;
+
+  render('colTodo', cols.todo);
+  render('colProgress', cols['in-progress']);
+  render('colDone', cols.done);
+}
+
+function renderTags(tags) {
+  if (!tags || !tags.length) return '';
+  return tags.map(tag => `<span class="badge badge-${tag}">${esc(tag)}</span>`).join('');
+}
+
+function render(containerId, tasks) {
+  const el = document.getElementById(containerId);
+  el.innerHTML = tasks.map(t => `
+    <div class="card" onclick='openModal(${JSON.stringify(t.id)})'>
+      <div class="card-top">
+        <span class="card-id">${esc(t.id)}</span>
+      </div>
+      <div class="card-title">${esc(t.title)}</div>
+      <div class="card-bottom">
+        ${renderTags(t.tags)}
+        <span class="badge badge-priority">P${t.priority}</span>
+        <span class="card-criteria">${t.acceptanceCriteria.length} criteria</span>
+      </div>
+    </div>
+  `).join('');
+}
+
+function openModal(id) {
+  const t = TASKS_DATA.tasks.find(x => x.id === id);
+  if (!t) return;
+
+  document.getElementById('modalId').textContent = t.id;
+  document.getElementById('modalTitle').textContent = t.title;
+
+  const tagBadges = renderTags(t.tags);
+  const statusMap = { todo: 'Todo', 'in-progress': 'In Progress', done: 'Done' };
+  const statusLabel = statusMap[t.status] || t.status;
+
+  let html = `
+    <div class="modal-meta">
+      ${tagBadges}
+      <span class="meta-chip">Priority ${t.priority}</span>
+      <span class="meta-chip">${esc(statusLabel)}</span>
+    </div>
+
+    <div class="modal-section">
+      <h3>Description</h3>
+      <p>${esc(t.description)}</p>
+    </div>
+
+    <div class="modal-section">
+      <h3>Acceptance Criteria</h3>
+      <ul class="criteria-list">
+        ${t.acceptanceCriteria.map(c => `<li>${esc(c)}</li>`).join('')}
+      </ul>
+    </div>
+
+    <div class="modal-section">
+      <h3>Progress</h3>
+      ${t.progress ? `<div class="info-block">${esc(t.progress)}</div>` : '<p class="empty">No progress recorded yet</p>'}
+    </div>
+
+    <div class="modal-section">
+      <h3>Test Plan</h3>
+      ${t.test_plan && (Array.isArray(t.test_plan) ? t.test_plan.length : t.test_plan) ? (Array.isArray(t.test_plan) ? `<ul class="criteria-list">${t.test_plan.map(s => `<li>${esc(s)}</li>`).join('')}</ul>` : `<div class="info-block">${esc(t.test_plan)}</div>`) : '<p class="empty">No test plan yet</p>'}
+    </div>
+  `;
+
+  if (t.screenshots && t.screenshots.length) {
+    html += `
+    <div class="modal-section">
+      <h3>Screenshots</h3>
+      <div class="screenshots-grid">
+        ${t.screenshots.map(s => `<img src="../${esc(s)}" alt="${esc(s)}" onclick="window.open(this.src)">`).join('')}
+      </div>
+    </div>
+    `;
+  }
+
+  html += `
+    <div class="modal-section">
+      <h3>Notes</h3>
+      ${t.notes ? `<div class="notes-block">${esc(t.notes)}</div>` : '<p class="empty">No notes</p>'}
+    </div>
+  `;
+
+  document.getElementById('modalBody').innerHTML = html;
+  document.getElementById('overlay').classList.add('active');
+}
+
+function closeModal() {
+  document.getElementById('overlay').classList.remove('active');
+}
+
+function esc(s) {
+  if (!s) return '';
+  const d = document.createElement('div');
+  d.textContent = s;
+  return d.innerHTML;
+}
+
+init();
+</script>
+</body>
+</html>
