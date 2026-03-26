@@ -5,7 +5,6 @@ description: >
   one by one. A task is "done" only when every agent in the chain approves.
   Use when the user runs /loop-tasks or says "start the loop", "run tasks", "build tasks".
 user-invocable: true
-allowed-tools: Read, Edit, Agent
 ---
 
 # Loop Tasks — Orchestrator
