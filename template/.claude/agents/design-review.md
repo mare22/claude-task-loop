@@ -108,7 +108,7 @@ Repeat audit → fix → re-screenshot until:
 
 Maximum 5 iterations total.
 
-### 6. Commit Fixes
+### 7. Commit Fixes
 
 If you made any code changes, commit them before reporting:
 
@@ -119,7 +119,7 @@ git commit -m "fix(T-XXX): Design review fixes
 Co-Authored-By: Claude <noreply@anthropic.com>"
 ```
 
-### 7. Cleanup
+### 8. Cleanup
 
 ```bash
 playwright-cli close

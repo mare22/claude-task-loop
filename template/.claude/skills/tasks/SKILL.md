@@ -121,12 +121,12 @@ If `agents` is omitted or set to `["task-worker"]`, no QA agents run.
 ### `/tasks list`
 
 1. Read `tasks/tasks.json`
-2. Display tasks grouped by status: todo → in-progress → done
+2. Display tasks grouped by status: todo → in-progress → done → skipped
 3. Show: ID, title, tags, priority, agents, status
 
 ### `/tasks` (no subcommand)
 
-Show a brief summary: total tasks, todo count, in-progress count, done count. Then ask what the user wants to do.
+Show a brief summary: total tasks, todo count, in-progress count, done count, skipped count. Then ask what the user wants to do.
 
 ---
 
