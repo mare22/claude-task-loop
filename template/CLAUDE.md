@@ -98,6 +98,9 @@ Tasks are managed in `tasks/tasks.json`. The autonomous loop works as follows:
 // Performance-critical feature
 "agents": ["task-worker", "code-review", "performance-check", "test-coverage"]
 
+// Mobile app — both platforms
+"agents": ["task-worker", "code-review", "ios-tester", "android-tester", "mobile-design-review"]
+
 // Simple task — just code review
 "agents": ["task-worker", "code-review"]
 

@@ -56,6 +56,18 @@ Performance engineer. Reviews code for unbounded queries, N+1 patterns, memory l
 
 Test quality engineer. Runs the test suite, checks that new code has tests, verifies tests assert meaningful behavior (not no-ops), checks edge cases and error paths. Rejects if tests fail, new logic has no tests, or tests don't actually test anything. Read-only — reports APPROVED/REJECTED.
 
+### ios-tester
+
+iOS functional QA via Maestro. Launches the app on an iOS simulator, interacts with the UI (tap, scroll, type, swipe), and verifies each acceptance criterion. Checks for crashes, frozen UI, broken navigation, safe area violations, and data loss. Outputs BLOCKED if Maestro or simulator is not available. Read-only — reports APPROVED/REJECTED/BLOCKED.
+
+### android-tester
+
+Android functional QA via Maestro. Launches the app on an Android emulator, interacts with the UI, and verifies each acceptance criterion. Checks for crashes, ANR, broken navigation, keyboard issues, edge-to-edge violations, and data loss. Tests Android back button at every screen. Outputs BLOCKED if Maestro or emulator is not available. Read-only — reports APPROVED/REJECTED/BLOCKED.
+
+### mobile-design-review
+
+Mobile visual design QA. Takes native screenshots (`xcrun simctl io` for iOS, `adb screencap` for Android) and audits for safe area violations, clipped content, broken layout, platform convention violations, and visual inconsistencies. **Has write access** — fixes Critical and Major issues directly in code, re-screenshots, and loops up to 5 iterations. Checks iOS-specific patterns (SF Symbols, Dynamic Type, navigation style) and Android-specific patterns (Material Design 3, edge-to-edge, elevation). Reports APPROVED/REJECTED/BLOCKED.
+
 ---
 
 ## Agent Chain Examples
@@ -78,14 +90,23 @@ The `agents` array in each task defines which agents process it, in order. Mix a
 // Performance-critical feature
 "agents": ["task-worker", "code-review", "performance-check", "test-coverage"]
 
-// Full pipeline — everything
+// Full web pipeline — everything
 "agents": ["task-worker", "code-review", "security-review", "test-coverage", "browser-test", "accessibility-audit", "performance-check", "design-review"]
 
 // Backend-only task — no QA needed
 "agents": ["task-worker"]
 
-// Mobile app (future — add your own agents)
+// Mobile app — iOS only
+"agents": ["task-worker", "code-review", "ios-tester", "mobile-design-review"]
+
+// Mobile app — Android only
+"agents": ["task-worker", "code-review", "android-tester", "mobile-design-review"]
+
+// Mobile app — both platforms
 "agents": ["task-worker", "code-review", "ios-tester", "android-tester", "mobile-design-review"]
+
+// Mobile app — full pipeline with security
+"agents": ["task-worker", "code-review", "security-review", "test-coverage", "ios-tester", "android-tester", "mobile-design-review"]
 ```
 
 ### Recommended chains by project type
@@ -99,6 +120,9 @@ The `agents` array in each task defines which agents process it, in order. Mix a
 | **Library/SDK** | `task-worker → code-review → test-coverage → performance-check` |
 | **Auth/payments** | `task-worker → code-review → security-review → test-coverage` |
 | **Data pipeline** | `task-worker → code-review → performance-check → test-coverage` |
+| **Mobile app (iOS)** | `task-worker → code-review → ios-tester → mobile-design-review` |
+| **Mobile app (Android)** | `task-worker → code-review → android-tester → mobile-design-review` |
+| **Mobile app (both)** | `task-worker → code-review → ios-tester → android-tester → mobile-design-review` |
 | **Quick fix/chore** | `task-worker → code-review` |
 | **Spike/prototype** | `task-worker` |
 
@@ -246,7 +270,7 @@ To add a new agent:
 3. Include specific issue descriptions in REJECTED output so task-worker can fix them
 4. Add the agent name to task `agents` arrays
 
-Example: to add an `ios-tester` agent that uses Maestro for iOS testing, create `.claude/agents/ios-tester.md` and add it to your mobile tasks: `["task-worker", "code-review", "ios-tester"]`.
+Example: to add a `lighthouse-audit` agent for web performance scoring, create `.claude/agents/lighthouse-audit.md` and add it to your tasks: `["task-worker", "code-review", "lighthouse-audit"]`.
 
 ---
 
@@ -263,7 +287,10 @@ your-project/
 │   │   ├── accessibility-audit.md  # WCAG 2.2 AA compliance (web)
 │   │   ├── security-review.md      # OWASP Top 10 vulnerability scan
 │   │   ├── performance-check.md    # Performance anti-patterns
-│   │   └── test-coverage.md        # Test quality verification
+│   │   ├── test-coverage.md        # Test quality verification
+│   │   ├── ios-tester.md           # Maestro functional QA (iOS)
+│   │   ├── android-tester.md       # Maestro functional QA (Android)
+│   │   └── mobile-design-review.md # Mobile visual design QA with auto-fix
 │   ├── hooks/
 │   │   └── notify-macos.sh         # macOS notification when Claude needs input
 │   ├── settings.json               # Hook configuration
@@ -287,6 +314,9 @@ your-project/
 - [Claude Code](https://claude.ai/claude-code) CLI
 - macOS (for notification hook — optional, works without it on other OS)
 - For web QA agents: [Playwright CLI](https://www.npmjs.com/package/@anthropic-ai/playwright-cli) (`npm install -g @anthropic-ai/playwright-cli`)
+- For mobile QA agents: [Maestro](https://maestro.mobile.dev/) (`curl -Ls "https://get.maestro.mobile.dev" | bash`)
+- For iOS testing: Xcode with iOS Simulator
+- For Android testing: Android Studio with emulator (or physical device via `adb`)
 
 ## License
 

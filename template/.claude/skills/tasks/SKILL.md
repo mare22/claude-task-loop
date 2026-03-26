@@ -75,7 +75,10 @@ Available agents (maps to `.claude/agents/{name}.md`):
 - `security-review` — OWASP Top 10 vulnerability scan
 - `performance-check` — Performance anti-patterns detection
 - `test-coverage` — Test quality and coverage verification
-- More can be added (e.g., `ios-tester`, `android-tester`, `mobile-design-review`)
+- `ios-tester` — Maestro-based functional testing (iOS simulator)
+- `android-tester` — Maestro-based functional testing (Android emulator)
+- `mobile-design-review` — Mobile visual design audit with auto-fixing
+- More can be added — create `.claude/agents/{name}.md`
 
 If `agents` is omitted or set to `["task-worker"]`, no QA agents run.
 
@@ -91,7 +94,7 @@ If `agents` is omitted or set to `["task-worker"]`, no QA agents run.
    - **title** (required)
    - **description** (required)
    - **tags** (required) — suggest based on description
-   - **agents** (required) — suggest based on tags and task type. Default: `["task-worker", "code-review"]`. For UI web tasks suggest: `["task-worker", "code-review", "browser-test", "design-review"]`. For API/auth tasks suggest: `["task-worker", "code-review", "security-review", "test-coverage"]`
+   - **agents** (required) — suggest based on tags and task type. Default: `["task-worker", "code-review"]`. For UI web tasks suggest: `["task-worker", "code-review", "browser-test", "design-review"]`. For API/auth tasks suggest: `["task-worker", "code-review", "security-review", "test-coverage"]`. For mobile tasks suggest: `["task-worker", "code-review", "ios-tester", "android-tester", "mobile-design-review"]`
    - **acceptanceCriteria** (required) — always append the project's quality gate criteria (from CLAUDE.md) as final criteria
    - **priority** (optional, default: next available)
    - **notes** (optional)

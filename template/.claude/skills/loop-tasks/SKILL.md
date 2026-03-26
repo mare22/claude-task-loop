@@ -99,13 +99,14 @@ You are a QA/verification agent. Follow the instructions in .claude/agents/{AGEN
 Read CLAUDE.md for project context (dev server URL, viewport, brand colors, etc.).
 Check screenshots/reference/ for design targets if they exist.
 
-Follow your agent instructions and output APPROVED or REJECTED with details.
+Follow your agent instructions and output APPROVED, REJECTED, or BLOCKED with details.
 ```
 
 Wait for the agent to finish.
 
 - If output contains **APPROVED** → this agent passed, continue to next agent in chain
 - If output contains **REJECTED** → chain failed, go to Step 4 (Handle Rejection)
+- If output contains **BLOCKED** → environment issue, STOP and ask the user (see Step 5 — Blocked)
 
 ---
 
