@@ -43,8 +43,7 @@ screenshots/
 ### For UI features:
 1. Check reference screenshots in `screenshots/reference/` (if available)
 2. **Use `/frontend-design` skill** for design guidance
-3. Verify in browser using playwright-cli
-4. Run quality gate commands
+3. Run quality gate commands
 
 ### For logic/state features:
 1. Write a failing test first
@@ -76,18 +75,31 @@ playwright-cli close
 Tasks are managed in `tasks/tasks.json`. The autonomous loop works as follows:
 
 1. **`/prd`** — Generate a Product Requirements Document
-2. **`/tasks add`** — Add tasks with title, description, tags, acceptance criteria, priority
-3. **`/loop-tasks`** — Orchestrator spawns agents sequentially:
-   - **task-worker** implements one task, runs quality gates, commits
-   - For UI tasks (tagged `"ui"`): **browser-test** + **design-review** QA agents verify
-   - Task is **done** only when all agents approve
-   - QA failure → task goes back to `"todo"` with findings in notes → task-worker retries (up to 3x)
-4. **Tags** control QA: `["feature", "ui"]` triggers QA, `["bug"]` does not
+2. **`/tasks add`** — Add tasks with title, description, tags, agents, acceptance criteria, priority
+3. **`/loop-tasks`** — Orchestrator runs the agent chain for each task:
+   - Reads the task's `agents` array (e.g. `["task-worker", "browser-test", "design-review"]`)
+   - Spawns each agent sequentially — task-worker implements, then QA agents verify
+   - Task is **done** only when ALL agents in the chain approve
+   - If any agent rejects → task goes back to `"todo"` with findings in notes → full chain restarts
+   - Up to 3 chain retries before asking the user
+
+### Agent chain examples
+
+```json
+// Web UI task — full QA
+"agents": ["task-worker", "browser-test", "design-review"]
+
+// Backend/logic task — no QA
+"agents": ["task-worker"]
+
+// Mobile task (future)
+"agents": ["task-worker", "ios-tester", "android-tester", "mobile-design-review"]
+```
 
 ### Task tags
 - `bug` — bug fix
 - `feature` — new feature
-- `ui` — has UI changes (triggers browser-test + design-review QA)
+- `ui` — has UI changes
 - `task` — chore, refactor, config
 
 Combine tags: `["bug", "ui"]` for a bug with UI changes.

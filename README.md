@@ -1,27 +1,31 @@
 # Claude Task Loop
 
-An autonomous task execution system for [Claude Code](https://claude.ai/claude-code). Define tasks, and Claude agents will implement them one by one — with automatic QA for UI tasks.
+An autonomous task execution system for [Claude Code](https://claude.ai/claude-code). Define tasks with custom agent chains, and Claude agents will implement and verify them one by one.
 
 ## What It Does
 
 ```
 /prd          → Generate a Product Requirements Document
-/tasks add    → Add tasks with acceptance criteria
-/loop-tasks   → Autonomous loop: implement → QA → commit → next task
+/tasks add    → Add tasks with acceptance criteria and agent chains
+/loop-tasks   → Autonomous loop: for each task, run the agent chain
 ```
 
-The system spawns fresh Claude agents for each task:
+The system spawns fresh Claude agents for each task in a configurable chain:
 
 1. **task-worker** — picks the next task, implements it, runs quality gates, commits
-2. **browser-test** — (UI tasks only) functional verification via Playwright
-3. **design-review** — (UI tasks only) visual QA with auto-fixing
+2. **QA/verification agents** — run after task-worker, verify the work (configurable per task)
 
-A task is "done" only when all agents approve. If QA fails, the task goes back to todo with findings — the next worker reads those notes and fixes the issues. Up to 3 retries before asking the user.
+Available QA agents:
+- **browser-test** — functional verification via Playwright (web)
+- **design-review** — visual QA with auto-fixing (web)
+- More can be added (e.g., `ios-tester`, `android-tester`, `mobile-design-review`)
+
+A task is "done" only when **every agent in the chain approves**. If any agent rejects, the full chain restarts — task-worker reads the rejection notes and fixes the issues. Up to 3 retries before asking the user.
 
 ## Install
 
 ```bash
-git clone https://github.com/YOUR_USERNAME/claude-task-loop.git
+git clone https://github.com/anthropics/claude-task-loop.git
 cd claude-task-loop
 ./install.sh /path/to/your/project
 ```
@@ -62,15 +66,26 @@ Describe your feature. Claude asks clarifying questions, then generates a struct
 /tasks add
 ```
 
-Add tasks with title, description, tags, and acceptance criteria. Tasks are stored in `tasks/tasks.json`.
+Add tasks with title, description, tags, agent chain, and acceptance criteria. Tasks are stored in `tasks/tasks.json`.
 
-**Tags control behavior:**
+**The `agents` array controls which agents process each task:**
+
+```json
+// Web UI task — full QA pipeline
+"agents": ["task-worker", "browser-test", "design-review"]
+
+// Backend/logic task — no QA needed
+"agents": ["task-worker"]
+
+// Mobile task (when you add mobile agents)
+"agents": ["task-worker", "ios-tester", "android-tester", "mobile-design-review"]
+```
+
+**Tags describe the task type:**
 - `bug` — bug fix
 - `feature` — new feature
-- `ui` — has UI changes (triggers browser-test + design-review QA)
+- `ui` — has UI changes
 - `task` — chore, refactor, config
-
-Combine tags: `["feature", "ui"]` triggers QA, `["bug"]` does not.
 
 ### 3. Run the Loop
 
@@ -80,10 +95,11 @@ Combine tags: `["feature", "ui"]` triggers QA, `["bug"]` does not.
 
 The orchestrator processes tasks sequentially:
 - Picks highest priority `todo` task
-- Spawns a task-worker agent
-- For UI tasks: spawns QA agents after implementation
+- Runs the task's agent chain: spawns each agent one by one
+- task-worker implements → QA agents verify → all must approve
+- If any agent rejects → full chain restarts (task-worker fixes, all agents re-verify)
 - Reports results, auto-continues to next task
-- Stops when all done, blocked, or QA fails 3 times
+- Stops when all done, blocked, or chain fails 3 times
 
 ### 4. View Progress
 
@@ -104,8 +120,6 @@ Open `http://localhost:3000/board.html` — a live Kanban board that auto-refres
 /tasks update    — Update task fields
 /tasks remove    — Remove tasks
 /tasks           — Summary stats
-/design-review   — Manual visual QA audit
-/browser-test    — Manual browser verification
 /frontend-design — Design guidance for UI work
 ```
 
@@ -115,15 +129,15 @@ Open `http://localhost:3000/board.html` — a live Kanban board that auto-refres
 your-project/
 ├── .claude/
 │   ├── agents/
-│   │   └── task-worker.md       # Agent: implements one task per session
+│   │   ├── task-worker.md       # Agent: implements one task per session
+│   │   ├── browser-test.md      # Agent: Playwright functional QA (web)
+│   │   └── design-review.md     # Agent: visual design QA with auto-fix (web)
 │   ├── hooks/
 │   │   └── notify-macos.sh      # macOS notification when Claude needs input
 │   ├── settings.json            # Hook configuration
 │   └── skills/
 │       ├── tasks/SKILL.md       # /tasks — manage task database
 │       ├── loop-tasks/SKILL.md  # /loop-tasks — autonomous orchestrator
-│       ├── browser-test/SKILL.md# /browser-test — Playwright functional QA
-│       ├── design-review/SKILL.md# /design-review — visual QA with auto-fix
 │       ├── prd/SKILL.md         # /prd — PRD generator
 │       ├── frontend-design/SKILL.md # /frontend-design — design guidance
 │       ├── playwright-cli/SKILL.md  # /playwright-cli — browser automation
@@ -142,40 +156,47 @@ your-project/
 ### Task Lifecycle
 
 ```
-todo → in-progress → [quality gates] → commit → done
-                                          ↓ (UI tasks)
-                                     browser-test → design-review
-                                          ↓ (if QA fails)
-                                     back to todo (with notes)
+todo → in-progress → [quality gates] → commit → agent chain
+                                                    ↓
+                                          task-worker → agent2 → agent3 → ... → done
+                                                    ↓ (if any agent rejects)
+                                          back to todo (with notes) → retry chain
 ```
+
+### Agent Chain
+
+Each task has an `agents` array that defines its processing pipeline:
+
+1. **task-worker** (always first) — implements the code, runs quality gates, commits
+2. **QA agents** (rest of the chain) — each verifies the work and outputs APPROVED or REJECTED
+
+The chain runs sequentially. If any agent rejects:
+- Task goes back to `"todo"` with rejection details in `notes`
+- Full chain restarts — task-worker reads the notes and fixes the issues
+- All agents re-verify (because a fix might break something else)
+- Maximum 3 full chain retries before asking the user
+
+### Adding Custom Agents
+
+To add a new agent to the system:
+
+1. Create `.claude/agents/{agent-name}.md` with instructions
+2. The agent must output **APPROVED** or **REJECTED** at the end
+3. Add the agent name to task `agents` arrays: `["task-worker", "your-agent"]`
 
 ### Quality Gates
 
 Every task must pass the project's quality gates before committing. These are configured during `/setup` (e.g., typecheck, lint, test).
 
-### QA for UI Tasks
-
-Any task tagged with `"ui"` gets two QA passes after implementation:
-
-1. **Browser Test** — Opens the app in Playwright, tests each acceptance criterion, reports PASS/FAIL
-2. **Design Review** — Screenshots the UI, audits for hard blockers (clipped content, broken layout, missing elements), fixes Critical/Major issues
-
-Hard blockers that auto-fail QA:
-- Content cut off or clipped
-- Broken layout (overlapping, off-screen elements)
-- Missing critical elements
-- Unreadable content (low contrast, tiny text)
-- Non-functional interactions (unreachable buttons)
-
 ### Re-work Loop
 
-If QA fails, the task goes back to `todo` with detailed findings in the `notes` field. The next task-worker reads those notes and fixes the specific issues (doesn't rebuild from scratch). Maximum 3 retries before asking the user.
+If any agent rejects, the task goes back to `todo` with detailed findings in the `notes` field. The next task-worker reads those notes and fixes the specific issues (doesn't rebuild from scratch). Maximum 3 retries before asking the user.
 
 ## Requirements
 
 - [Claude Code](https://claude.ai/claude-code) CLI
 - macOS (for notification hook — optional, works without it on other OS)
-- For UI QA: [Playwright CLI](https://www.npmjs.com/package/@anthropic-ai/playwright-cli) (`npm install -g @anthropic-ai/playwright-cli`)
+- For web QA agents: [Playwright CLI](https://www.npmjs.com/package/@anthropic-ai/playwright-cli) (`npm install -g @anthropic-ai/playwright-cli`)
 
 ## License
 

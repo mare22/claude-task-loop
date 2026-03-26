@@ -31,15 +31,6 @@ If the task's `notes` field contains "QA FAILED", this is a re-work:
 
 **For UI tasks** (tags include `"ui"`):
 - Use the `/frontend-design` skill for design guidance
-- Verify in browser using Playwright CLI (read CLAUDE.md for dev server URL and viewport):
-  ```bash
-  playwright-cli open <DEV_SERVER_URL>
-  playwright-cli resize <VIEWPORT_WIDTH> <VIEWPORT_HEIGHT>
-  playwright-cli snapshot
-  playwright-cli screenshot --filename=/tmp/verify/T-XXX.png
-  playwright-cli close
-  ```
-- If the UI doesn't look right, fix and re-verify (up to 3 iterations)
 
 **For logic tasks** (no `"ui"` tag):
 - Write a failing test first, then implement until it passes

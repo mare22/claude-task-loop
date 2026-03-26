@@ -23,6 +23,7 @@ allowed-tools: Read, Write, Edit, Glob, Bash
       "tags": ["feature", "ui"],
       "status": "todo",
       "priority": 1,
+      "agents": ["task-worker", "browser-test", "design-review"],
       "acceptanceCriteria": ["Criterion 1", "Quality gates pass"],
       "progress": "",
       "test_plan": [],
@@ -40,9 +41,10 @@ allowed-tools: Read, Write, Edit, Glob, Bash
 | `id` | string | Auto-generated: T-001, T-002, etc. Never reused. |
 | `title` | string | Short task title |
 | `description` | string | Full description or user story |
-| `tags` | string[] | One or more of: `bug`, `feature`, `ui`, `task`. Tasks with `ui` tag trigger browser-test + design-review QA. |
+| `tags` | string[] | One or more of: `bug`, `feature`, `ui`, `task`. |
 | `status` | string | `todo`, `in-progress`, `done` |
 | `priority` | number | Lower = higher priority. Mutable. |
+| `agents` | string[] | Agent chain for this task. First must always be `task-worker`. Remaining agents run sequentially as QA/verification. Examples: `["task-worker"]`, `["task-worker", "browser-test", "design-review"]`, `["task-worker", "ios-tester", "android-tester"]`. Each agent name maps to `.claude/agents/{name}.md`. |
 | `acceptanceCriteria` | string[] | Checklist the task-worker must satisfy |
 | `screenshots` | string[] | Paths to screenshots in `screenshots/tasks/`. Naming: `T-XXX-description.png` |
 | `progress` | string | Filled by task-worker after completion |
@@ -51,14 +53,26 @@ allowed-tools: Read, Write, Edit, Glob, Bash
 
 ### Tags
 
-Use multiple tags when appropriate:
-- `["bug", "ui"]` — bug fix that changes UI → triggers QA
-- `["feature", "ui"]` — new feature with UI → triggers QA
-- `["feature"]` — logic-only feature → no QA
-- `["bug"]` — logic-only bug fix → no QA
-- `["task"]` — chore, refactor, config → no QA
+- `bug` — bug fix
+- `feature` — new feature
+- `ui` — has UI changes
+- `task` — chore, refactor, config
 
-Any task with `"ui"` in its tags triggers browser-test + design-review after implementation.
+Combine tags: `["feature", "ui"]`, `["bug", "ui"]`, etc.
+
+### Agents
+
+The `agents` array defines which agents process this task, in order:
+
+1. **`task-worker`** (required, always first) — implements the code, runs quality gates, commits
+2. **QA/verification agents** (optional) — run after task-worker, verify the work
+
+Available agents (maps to `.claude/agents/{name}.md`):
+- `browser-test` — Playwright-based functional testing (web)
+- `design-review` — Visual design audit with auto-fixing (web)
+- More can be added (e.g., `ios-tester`, `android-tester`, `mobile-design-review`)
+
+If `agents` is omitted or set to `["task-worker"]`, no QA agents run.
 
 ---
 
@@ -72,6 +86,7 @@ Any task with `"ui"` in its tags triggers browser-test + design-review after imp
    - **title** (required)
    - **description** (required)
    - **tags** (required) — suggest based on description
+   - **agents** (required) — suggest based on tags. Default: `["task-worker"]`. For UI web tasks suggest: `["task-worker", "browser-test", "design-review"]`
    - **acceptanceCriteria** (required) — always append the project's quality gate criteria (from CLAUDE.md) as final criteria
    - **priority** (optional, default: next available)
    - **notes** (optional)
@@ -85,7 +100,7 @@ Any task with `"ui"` in its tags triggers browser-test + design-review after imp
 1. Read `tasks/tasks.json`
 2. User specifies task by ID (e.g., T-003)
 3. Update only the specified fields
-4. Common updates: status, progress, priority, tags, acceptanceCriteria
+4. Common updates: status, progress, priority, tags, agents, acceptanceCriteria
 5. Write updated JSON back
 
 ### `/tasks remove`
@@ -99,7 +114,7 @@ Any task with `"ui"` in its tags triggers browser-test + design-review after imp
 
 1. Read `tasks/tasks.json`
 2. Display tasks grouped by status: todo → in-progress → done
-3. Show: ID, title, tags, priority, status
+3. Show: ID, title, tags, priority, agents, status
 
 ### `/tasks` (no subcommand)
 
@@ -114,3 +129,4 @@ Show a brief summary: total tasks, todo count, in-progress count, done count. Th
 - **Always include quality gates** — read CLAUDE.md for project-specific quality gate commands and append them to acceptanceCriteria if not already present
 - **Support batch operations** — user can add/update/remove multiple tasks at once
 - **Validate tags** — must be from: `bug`, `feature`, `ui`, `task`
+- **Validate agents** — first element must always be `task-worker`
