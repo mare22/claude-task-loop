@@ -2,11 +2,11 @@
 
 ## Project Overview
 
-<!-- Filled by /setup -->
+<!-- Fill in your project details -->
 
 ## Tech Stack
 
-<!-- Filled by /setup — e.g.: -->
+<!-- e.g.: -->
 <!-- - **Framework**: React / Next.js / Expo / Vue / etc. -->
 <!-- - **Language**: TypeScript -->
 <!-- - **Testing**: Jest / Vitest / Pytest / etc. -->
@@ -58,7 +58,7 @@ screenshots/
 
 ## Browser Verification
 
-<!-- Filled by /setup -->
+<!-- Fill in your project details -->
 <!-- Dev server: http://localhost:3000 -->
 <!-- Viewport: 1280x720 -->
 
@@ -123,4 +123,4 @@ Then open `http://localhost:3000/board.html` (or port 9090). The board auto-refr
 
 ## Setup
 
-Run `/setup` to configure this task loop for your project. It will ask about your tech stack, quality gates, viewport, and dev server, then update this file and the configuration.
+Fill in the sections above marked with `<!-- Filled by ... -->` with your project's details: tech stack, quality gate commands, dev server URL, and viewport size.

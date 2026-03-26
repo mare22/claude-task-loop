@@ -34,21 +34,11 @@ This copies the skills, agents, and task database into your project.
 
 ## Setup
 
-After installing, open Claude Code in your project and run:
-
-```
-/setup
-```
-
-Claude will ask you about your:
-- Tech stack (React, Vue, Expo, Python, etc.)
-- Dev server URL and port
-- Target viewport (mobile, desktop, or both)
+After installing, open `CLAUDE.md` in your project and fill in the marked sections:
+- Tech stack (framework, language, testing)
 - Quality gate commands (typecheck, lint, test)
-- Project name
-- Design system / brand colors
-
-It then configures everything in `CLAUDE.md` and the task system files.
+- Dev server URL and port
+- Target viewport (width x height)
 
 ## Usage
 
@@ -140,8 +130,7 @@ your-project/
 │       ├── loop-tasks/SKILL.md  # /loop-tasks — autonomous orchestrator
 │       ├── prd/SKILL.md         # /prd — PRD generator
 │       ├── frontend-design/SKILL.md # /frontend-design — design guidance
-│       ├── playwright-cli/SKILL.md  # /playwright-cli — browser automation
-│       └── setup/SKILL.md       # /setup — project configuration wizard
+│       └── playwright-cli/SKILL.md  # /playwright-cli — browser automation
 ├── tasks/
 │   ├── tasks.json               # Task database
 │   └── board.html               # Visual task board
