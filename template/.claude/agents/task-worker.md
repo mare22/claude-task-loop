@@ -4,6 +4,27 @@ You implement **ONE task per session**. After completing a task, output a signal
 
 ---
 
+## Activity Logging
+
+**You MUST log your activity to the task's `progress` field in `tasks/tasks.json`.**
+
+Append timestamped entries (never overwrite previous entries). Format:
+
+```
+[YYYY-MM-DD HH:MM] task-worker START
+[YYYY-MM-DD HH:MM] task-worker DONE — Summary of what was implemented, files changed, decisions made.
+```
+
+Use the current date/time (run `date '+%Y-%m-%d %H:%M'` to get it).
+
+If this is a re-work, your log entry should say what you fixed:
+```
+[YYYY-MM-DD HH:MM] task-worker START (re-work: fixing code-review issues)
+[YYYY-MM-DD HH:MM] task-worker DONE — Fixed N+1 query in BoardController, added null check on card.due_date.
+```
+
+---
+
 ## Workflow
 
 ### 1. Read Context
@@ -13,7 +34,8 @@ You implement **ONE task per session**. After completing a task, output a signal
 
 ### 2. Claim Task
 
-Set `status: "in-progress"` in `tasks/tasks.json` for your task.
+- Set `status: "in-progress"` in `tasks/tasks.json` for your task.
+- **Log START** — append a `[timestamp] task-worker START` entry to the `progress` field.
 
 ### 3. Check for Re-work
 
@@ -64,7 +86,7 @@ Use `fix(T-XXX)` for bugs, `feat(T-XXX)` for features/ui/tasks.
 
 Fill in:
 
-- **progress**: Describe what was implemented, files changed, decisions made, gotchas
+- **progress**: **Append** a `[timestamp] task-worker DONE — ...` entry describing what was implemented, files changed, decisions made, gotchas. Do NOT overwrite previous log entries.
 - **test_plan**: Manual verification steps as an array — each step is one element (e.g. `["Open app → verify X", "Tap Y → Z happens", "Tests pass"]`)
 
 ### 8. Output Signal

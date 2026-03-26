@@ -14,9 +14,54 @@ user-invocable: true
 You are an **orchestrator**. You do NOT implement code yourself. You:
 1. Read `tasks/tasks.json` and find the next `todo` task (lowest priority number)
 2. Run the task's **agent chain** — spawn each agent one by one, in order
-3. A task is **done** only when ALL agents in the chain output APPROVED (or NEXT/COMPLETE for task-worker)
-4. If any agent outputs REJECTED, restart the chain from task-worker
-5. Loop until all tasks are done or you hit a blocker
+3. **Log activity** — after each agent finishes, append a timestamped log entry to the task's `progress` field
+4. A task is **done** only when ALL agents in the chain output APPROVED (or NEXT/COMPLETE for task-worker)
+5. If any agent outputs REJECTED, restart the chain from task-worker
+6. Loop until all tasks are done or you hit a blocker
+
+---
+
+## Activity Logging
+
+**CRITICAL: You MUST log every agent's activity to the task's `progress` field in `tasks/tasks.json`.**
+
+Get the current timestamp by running: `date '+%Y-%m-%d %H:%M'`
+
+### When to log
+
+Log **BEFORE** spawning each agent and **AFTER** each agent finishes:
+
+```
+[2026-03-26 14:30] task-worker START
+[2026-03-26 14:35] task-worker DONE — Created Board model, migration, controller. Committed feat(T-003).
+[2026-03-26 14:36] code-review START
+[2026-03-26 14:37] code-review APPROVED — Reviewed 5 files. No blockers found. Suggestion: add index on board_id.
+[2026-03-26 14:38] browser-test START
+[2026-03-26 14:40] browser-test APPROVED — All 4 criteria verified. Screenshots at /tmp/qa/T-003.png
+[2026-03-26 14:41] design-review START
+[2026-03-26 14:43] design-review APPROVED — No critical issues. Fixed minor spacing. Committed fix(T-003).
+```
+
+On rejection:
+```
+[2026-03-26 14:37] code-review REJECTED — 2 blockers: 1) N+1 query in index(), 2) Missing null check on due_date
+```
+
+On re-work (next chain pass):
+```
+[2026-03-26 14:50] task-worker START (re-work: fixing code-review issues)
+[2026-03-26 14:53] task-worker DONE — Fixed N+1 query with eager loading, added null check. Committed fix(T-003).
+[2026-03-26 14:54] code-review START
+[2026-03-26 14:55] code-review APPROVED — Previous issues resolved. Clean.
+```
+
+### How to log
+
+1. Read `tasks/tasks.json`
+2. **Append** the new log line to the existing `progress` field (never overwrite previous entries)
+3. Write `tasks/tasks.json`
+
+**Note:** task-worker logs its own START/DONE entries (it has write access). You log for all QA agents since they are read-only. Always check what task-worker already logged before adding your own entries.
 
 ---
 
@@ -74,6 +119,10 @@ Your assigned task:
 
 Read tasks/tasks.json, find task [T-XXX], set it to in-progress, implement it, run quality checks, commit if all pass, update tasks.json progress and test_plan fields.
 
+IMPORTANT: Log your activity to the progress field with timestamps:
+- Append "[YYYY-MM-DD HH:MM] task-worker START" when you begin (use `date '+%Y-%m-%d %H:%M'`)
+- Append "[YYYY-MM-DD HH:MM] task-worker DONE — [summary]" when you finish
+
 Do NOT set status to "done" — the orchestrator handles that.
 
 For UI work, use the /frontend-design skill for design guidance.
@@ -90,7 +139,11 @@ Wait for the agent to finish.
 
 ### Remaining agents (QA/verification)
 
-For each subsequent agent in the chain (index 1, 2, 3, ...), spawn a **fresh** Agent with this prompt:
+For each subsequent agent in the chain (index 1, 2, 3, ...):
+
+**Before spawning:** Log `[timestamp] {agent-name} START` to the task's `progress` field in tasks.json.
+
+Spawn a **fresh** Agent with this prompt:
 
 ```
 You are a QA/verification agent. Follow the instructions in .claude/agents/{AGENT_NAME}.md exactly.
@@ -110,9 +163,15 @@ Follow your agent instructions and output APPROVED, REJECTED, or BLOCKED with de
 
 Wait for the agent to finish.
 
-- If output contains **APPROVED** → this agent passed, continue to next agent in chain
-- If output contains **REJECTED** → chain failed, go to Step 4 (Handle Rejection)
-- If output contains **BLOCKED** → environment issue, STOP and ask the user (see Step 5 — Blocked)
+**After the agent finishes:** Log the result to the task's `progress` field:
+- `[timestamp] {agent-name} APPROVED — [brief summary from agent output]`
+- `[timestamp] {agent-name} REJECTED — [brief summary of issues from agent output]`
+- `[timestamp] {agent-name} BLOCKED — [reason from agent output]`
+
+Then:
+- If **APPROVED** → continue to next agent in chain
+- If **REJECTED** → go to Step 4 (Handle Rejection)
+- If **BLOCKED** → STOP and ask the user (see Step 5 — Blocked)
 
 ---
 
@@ -209,6 +268,7 @@ If the user chooses to skip: set `status: "skipped"` in `tasks/tasks.json`, then
 ## Rules
 
 - **RE-READ tasks.json FROM DISK every iteration** — never use cached data
+- **LOG EVERY AGENT'S ACTIVITY** — append timestamped entries to the `progress` field
 - **NEVER implement code yourself** — always spawn fresh agents
 - **RUN THE FULL AGENT CHAIN** — every agent in the task's `agents` array, sequentially
 - **RESTART FROM task-worker on rejection** — full chain re-runs after task-worker fixes
