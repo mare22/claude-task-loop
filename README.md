@@ -131,7 +131,7 @@ The `agents` array in each task defines which agents process it, in order. Mix a
 ## Install
 
 ```bash
-git clone https://github.com/anthropics/claude-task-loop.git
+git clone https://github.com/mare22/claude-task-loop.git
 cd claude-task-loop
 ./install.sh /path/to/your/project
 ```
@@ -217,7 +217,11 @@ npx serve tasks/
 python3 -m http.server 9090 -d tasks
 ```
 
-Open `http://localhost:3000/board.html` — a live Kanban board that auto-refreshes every 5 seconds.
+Open `http://localhost:3000/board.html` (or `http://localhost:9090/board.html`) — a live Kanban board that auto-refreshes every 5 seconds.
+
+The board shows 4 columns: **Todo**, **In Progress**, **Done**, **Skipped**. Each card displays the task ID, title, tags, priority, and agent chain. Click a card to see full details: description, agent chain, acceptance criteria, progress, test plan, screenshots, and notes.
+
+> **Note:** The board requires a local HTTP server — opening `board.html` directly as a file won't work because it fetches `tasks.json` via HTTP.
 
 ### 5. Other Commands
 

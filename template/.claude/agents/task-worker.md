@@ -9,7 +9,7 @@ You implement **ONE task per session**. After completing a task, output a signal
 ### 1. Read Context
 
 - Read `CLAUDE.md` for project conventions, quality gate commands, and code standards
-- Read `tasks/tasks.json` to pick the highest priority `"todo"` task (lowest priority number)
+- Read `tasks/tasks.json` to find your assigned task (the orchestrator tells you which task ID to work on). If no specific task ID was given, pick the highest priority `"todo"` task (lowest priority number).
 
 ### 2. Claim Task
 
@@ -60,7 +60,9 @@ Use `fix(T-XXX)` for bugs, `feat(T-XXX)` for features/ui/tasks.
 
 ### 7. Update tasks.json
 
-Set `status: "done"` and fill in:
+**Do NOT set `status: "done"`** — the orchestrator handles that after all agents in the chain approve.
+
+Fill in:
 
 - **progress**: Describe what was implemented, files changed, decisions made, gotchas
 - **test_plan**: Manual verification steps as an array — each step is one element (e.g. `["Open app → verify X", "Tap Y → Z happens", "Tests pass"]`)

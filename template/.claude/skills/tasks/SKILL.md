@@ -23,7 +23,7 @@ allowed-tools: Read, Write, Edit, Glob, Bash
       "tags": ["feature", "ui"],
       "status": "todo",
       "priority": 1,
-      "agents": ["task-worker", "browser-test", "design-review"],
+      "agents": ["task-worker", "code-review", "browser-test", "design-review"],
       "acceptanceCriteria": ["Criterion 1", "Quality gates pass"],
       "progress": "",
       "test_plan": [],
@@ -42,9 +42,9 @@ allowed-tools: Read, Write, Edit, Glob, Bash
 | `title` | string | Short task title |
 | `description` | string | Full description or user story |
 | `tags` | string[] | One or more of: `bug`, `feature`, `ui`, `task`. |
-| `status` | string | `todo`, `in-progress`, `done` |
+| `status` | string | `todo`, `in-progress`, `done`, `skipped` |
 | `priority` | number | Lower = higher priority. Mutable. |
-| `agents` | string[] | Agent chain for this task. First must always be `task-worker`. Remaining agents run sequentially as QA/verification. Examples: `["task-worker"]`, `["task-worker", "browser-test", "design-review"]`, `["task-worker", "ios-tester", "android-tester"]`. Each agent name maps to `.claude/agents/{name}.md`. |
+| `agents` | string[] | Agent chain for this task. First must always be `task-worker`. Remaining agents run sequentially as QA/verification. Examples: `["task-worker"]`, `["task-worker", "code-review", "browser-test", "design-review"]`, `["task-worker", "code-review", "ios-tester", "android-tester"]`. Each agent name maps to `.claude/agents/{name}.md`. |
 | `acceptanceCriteria` | string[] | Checklist the task-worker must satisfy |
 | `screenshots` | string[] | Paths to screenshots in `screenshots/tasks/`. Naming: `T-XXX-description.png` |
 | `progress` | string | Filled by task-worker after completion |

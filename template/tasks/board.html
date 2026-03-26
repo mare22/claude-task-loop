@@ -22,10 +22,10 @@
   .header .stats{margin-left:auto;display:flex;gap:16px;font-size:13px;color:var(--text2)}
   .header .stats span{display:flex;align-items:center;gap:6px}
   .header .stats .dot{width:8px;height:8px;border-radius:50%;display:inline-block}
-  .dot-todo{background:var(--text3)}.dot-progress{background:var(--amber)}.dot-done{background:var(--mint)}
+  .dot-todo{background:var(--text3)}.dot-progress{background:var(--amber)}.dot-done{background:var(--mint)}.dot-skipped{background:var(--red)}
 
   /* Board */
-  .board{display:grid;grid-template-columns:1fr 1fr 1fr;gap:20px;padding:24px 32px;height:calc(100vh - 81px);overflow:hidden}
+  .board{display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:20px;padding:24px 32px;height:calc(100vh - 81px);overflow:hidden}
   .column{background:var(--surface);border-radius:12px;border:1px solid var(--border);display:flex;flex-direction:column;overflow:hidden}
   .column-header{padding:16px 20px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:10px;flex-shrink:0}
   .column-header h2{font-size:14px;font-weight:600;text-transform:uppercase;letter-spacing:.5px}
@@ -33,6 +33,7 @@
   .col-todo .column-header h2{color:var(--text2)}
   .col-progress .column-header h2{color:var(--amber)}
   .col-done .column-header h2{color:var(--mint)}
+  .col-skipped .column-header h2{color:var(--red)}
   .column-body{padding:12px;overflow-y:auto;flex:1;display:flex;flex-direction:column;gap:10px}
 
   /* Cards */
@@ -48,6 +49,7 @@
   .badge-ui{background:var(--cyan10);color:var(--cyan)}
   .badge-task{background:var(--amber10);color:var(--amber)}
   .badge-priority{background:var(--surface3);color:var(--text2);font-family:'SF Mono',Monaco,monospace}
+  .card-agents{font-size:10px;color:var(--text3);margin-top:6px;font-family:'SF Mono',Monaco,monospace;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .card-criteria{font-size:10px;color:var(--text3);margin-left:auto}
 
   /* Modal overlay */
@@ -94,7 +96,8 @@
   ::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px}
   ::-webkit-scrollbar-thumb:hover{background:var(--text3)}
 
-  @media(max-width:900px){.board{grid-template-columns:1fr;height:auto}.column{max-height:60vh}}
+  @media(max-width:1100px){.board{grid-template-columns:1fr 1fr;height:auto}.column{max-height:60vh}}
+  @media(max-width:700px){.board{grid-template-columns:1fr;height:auto}.column{max-height:60vh}}
 </style>
 </head>
 <body>
@@ -106,6 +109,7 @@
     <span><span class="dot dot-todo"></span> Todo: <strong id="statTodo">0</strong></span>
     <span><span class="dot dot-progress"></span> In Progress: <strong id="statProgress">0</strong></span>
     <span><span class="dot dot-done"></span> Done: <strong id="statDone">0</strong></span>
+    <span><span class="dot dot-skipped"></span> Skipped: <strong id="statSkipped">0</strong></span>
   </div>
 </div>
 
@@ -121,6 +125,10 @@
   <div class="column col-done">
     <div class="column-header"><h2>Done</h2><span class="count" id="countDone">0</span></div>
     <div class="column-body" id="colDone"></div>
+  </div>
+  <div class="column col-skipped">
+    <div class="column-header"><h2>Skipped</h2><span class="count" id="countSkipped">0</span></div>
+    <div class="column-body" id="colSkipped"></div>
   </div>
 </div>
 
@@ -190,7 +198,7 @@ function renderBoard() {
   const data = TASKS_DATA;
   document.getElementById('projectName').textContent = data.project;
 
-  const cols = { todo: [], 'in-progress': [], done: [] };
+  const cols = { todo: [], 'in-progress': [], done: [], skipped: [] };
   data.tasks.forEach(t => {
     const s = t.status || 'todo';
     if (cols[s]) cols[s].push(t); else cols.todo.push(t);
@@ -201,13 +209,16 @@ function renderBoard() {
   document.getElementById('statTodo').textContent = cols.todo.length;
   document.getElementById('statProgress').textContent = cols['in-progress'].length;
   document.getElementById('statDone').textContent = cols.done.length;
+  document.getElementById('statSkipped').textContent = cols.skipped.length;
   document.getElementById('countTodo').textContent = cols.todo.length;
   document.getElementById('countProgress').textContent = cols['in-progress'].length;
   document.getElementById('countDone').textContent = cols.done.length;
+  document.getElementById('countSkipped').textContent = cols.skipped.length;
 
   render('colTodo', cols.todo);
   render('colProgress', cols['in-progress']);
   render('colDone', cols.done);
+  render('colSkipped', cols.skipped);
 }
 
 function renderTags(tags) {
@@ -228,6 +239,7 @@ function render(containerId, tasks) {
         <span class="badge badge-priority">P${t.priority}</span>
         <span class="card-criteria">${t.acceptanceCriteria.length} criteria</span>
       </div>
+      ${t.agents && t.agents.length ? `<div class="card-agents">${t.agents.map(esc).join(' → ')}</div>` : ''}
     </div>
   `).join('');
 }
@@ -240,7 +252,7 @@ function openModal(id) {
   document.getElementById('modalTitle').textContent = t.title;
 
   const tagBadges = renderTags(t.tags);
-  const statusMap = { todo: 'Todo', 'in-progress': 'In Progress', done: 'Done' };
+  const statusMap = { todo: 'Todo', 'in-progress': 'In Progress', done: 'Done', skipped: 'Skipped' };
   const statusLabel = statusMap[t.status] || t.status;
 
   let html = `
@@ -249,6 +261,8 @@ function openModal(id) {
       <span class="meta-chip">Priority ${t.priority}</span>
       <span class="meta-chip">${esc(statusLabel)}</span>
     </div>
+
+    ${t.agents && t.agents.length ? `<div class="modal-section"><h3>Agent Chain</h3><p style="font-family:'SF Mono',Monaco,monospace;font-size:13px;color:var(--cyan)">${t.agents.map(esc).join(' → ')}</p></div>` : ''}
 
     <div class="modal-section">
       <h3>Description</h3>

@@ -165,6 +165,17 @@ Repeat audit → fix → re-screenshot until:
 
 Maximum 5 iterations total.
 
+### 7. Commit Fixes
+
+If you made any code changes, commit them before reporting:
+
+```bash
+git add <specific-files-you-changed>
+git commit -m "fix(T-XXX): Mobile design review fixes
+
+Co-Authored-By: Claude <noreply@anthropic.com>"
+```
+
 ---
 
 ## Output Signal

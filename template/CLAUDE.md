@@ -14,7 +14,7 @@
 ## Commands
 
 ```bash
-# Quality gate commands — filled by /setup
+# Quality gate commands
 # npm run typecheck
 # npm run lint
 # npm test
@@ -77,7 +77,7 @@ Tasks are managed in `tasks/tasks.json`. The autonomous loop works as follows:
 1. **`/prd`** — Generate a Product Requirements Document
 2. **`/tasks add`** — Add tasks with title, description, tags, agents, acceptance criteria, priority
 3. **`/loop-tasks`** — Orchestrator runs the agent chain for each task:
-   - Reads the task's `agents` array (e.g. `["task-worker", "browser-test", "design-review"]`)
+   - Reads the task's `agents` array (e.g. `["task-worker", "code-review", "browser-test", "design-review"]`)
    - Spawns each agent sequentially — task-worker implements, then QA agents verify
    - Task is **done** only when ALL agents in the chain approve
    - If any agent rejects → task goes back to `"todo"` with findings in notes → full chain restarts

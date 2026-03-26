@@ -40,6 +40,7 @@ Do NOT stop for:
 1. Read `tasks/tasks.json`
 2. Find next task: `status: "todo"`, lowest `priority` number
 3. If zero `todo` tasks → **"All tasks complete!"** → STOP
+4. If the task's `agents` array is missing or empty, default to `["task-worker"]`
 
 ---
 
@@ -47,7 +48,7 @@ Do NOT stop for:
 
 ```
 Starting T-XXX: [Title]...
-Agent chain: task-worker → browser-test → design-review
+Agent chain: task-worker → code-review → browser-test → design-review
 ```
 
 Immediately proceed — do NOT wait for confirmation.
@@ -56,7 +57,7 @@ Immediately proceed — do NOT wait for confirmation.
 
 ## Step 3 — Run Agent Chain
 
-The task's `agents` array defines the chain. Example: `["task-worker", "browser-test", "design-review"]`
+The task's `agents` array defines the chain. Example: `["task-worker", "code-review", "browser-test", "design-review"]`
 
 **For each agent in the chain, spawn it sequentially. Wait for each to finish before spawning the next.**
 
@@ -67,7 +68,13 @@ Spawn a **fresh** Agent (general-purpose) with this prompt:
 ```
 You are a task worker. Follow the instructions in .claude/agents/task-worker.md exactly.
 
-Read tasks/tasks.json, pick the highest priority "todo" task, implement it, run quality checks, commit if all pass, update tasks.json with status based on results.
+Your assigned task:
+- ID: [T-XXX]
+- Title: [title]
+
+Read tasks/tasks.json, find task [T-XXX], set it to in-progress, implement it, run quality checks, commit if all pass, update tasks.json progress and test_plan fields.
+
+Do NOT set status to "done" — the orchestrator handles that.
 
 For UI work, use the /frontend-design skill for design guidance.
 
@@ -134,10 +141,14 @@ When any agent in the chain outputs REJECTED:
 
 ### Success (all agents approved):
 
+1. Read `tasks/tasks.json`, set `status: "done"` for this task
+2. Write `tasks/tasks.json`
+3. Report:
+
 ```
 T-XXX [Title] — Done ✓
   [one-line summary]
-  Chain: task-worker ✓ → browser-test ✓ → design-review ✓
+  Chain: task-worker ✓ → code-review ✓ → browser-test ✓ → design-review ✓
   Files: [key files]
 
 Starting T-YYY: [Next Title]...
@@ -166,11 +177,13 @@ Problem: [what went wrong]
 
 Options:
 1. Retry with a fresh agent
-2. Skip this task and continue
+2. Skip this task and continue (sets status to "skipped")
 3. I'll give you guidance
 
 What do you want to do?
 ```
+
+If the user chooses to skip: set `status: "skipped"` in `tasks/tasks.json`, then go back to Step 1.
 
 ### Chain Failed 3 times:
 
@@ -183,11 +196,13 @@ Persistent issues:
 
 Options:
 1. I'll look at it and give guidance
-2. Skip this task for now
+2. Skip this task for now (sets status to "skipped")
 3. Retry one more time
 
 What do you want to do?
 ```
+
+If the user chooses to skip: set `status: "skipped"` in `tasks/tasks.json`, then go back to Step 1.
 
 ---
 
