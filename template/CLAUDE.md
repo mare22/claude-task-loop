@@ -87,13 +87,22 @@ Tasks are managed in `tasks/tasks.json`. The autonomous loop works as follows:
 
 ```json
 // Web UI task — full QA
-"agents": ["task-worker", "browser-test", "design-review"]
+"agents": ["task-worker", "code-review", "browser-test", "design-review"]
 
-// Backend/logic task — no QA
+// Web UI with accessibility
+"agents": ["task-worker", "code-review", "browser-test", "accessibility-audit", "design-review"]
+
+// Backend API task
+"agents": ["task-worker", "code-review", "security-review", "test-coverage"]
+
+// Performance-critical feature
+"agents": ["task-worker", "code-review", "performance-check", "test-coverage"]
+
+// Simple task — just code review
+"agents": ["task-worker", "code-review"]
+
+// Quick fix — no QA
 "agents": ["task-worker"]
-
-// Mobile task (future)
-"agents": ["task-worker", "ios-tester", "android-tester", "mobile-design-review"]
 ```
 
 ### Task tags

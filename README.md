@@ -10,17 +10,99 @@ An autonomous task execution system for [Claude Code](https://claude.ai/claude-c
 /loop-tasks   → Autonomous loop: for each task, run the agent chain
 ```
 
-The system spawns fresh Claude agents for each task in a configurable chain:
+Each task defines an **agent chain** — a sequence of specialized agents that process the task:
 
-1. **task-worker** — picks the next task, implements it, runs quality gates, commits
-2. **QA/verification agents** — run after task-worker, verify the work (configurable per task)
+```
+task-worker → code-review → browser-test → design-review → done!
+     ↑                                          |
+     └──── rejection notes ─────────────────────┘
+```
 
-Available QA agents:
-- **browser-test** — functional verification via Playwright (web)
-- **design-review** — visual QA with auto-fixing (web)
-- More can be added (e.g., `ios-tester`, `android-tester`, `mobile-design-review`)
+The first agent (`task-worker`) implements the code. The remaining agents verify the work. A task is "done" only when **every agent in the chain approves**. If any agent rejects, task-worker reads the rejection notes and fixes the issues, then the full chain runs again.
 
-A task is "done" only when **every agent in the chain approves**. If any agent rejects, the full chain restarts — task-worker reads the rejection notes and fixes the issues. Up to 3 retries before asking the user.
+---
+
+## Agents
+
+### task-worker (required, always first)
+
+Implements the task: reads acceptance criteria, writes code, runs quality gates (lint, typecheck, test), commits. For re-work, reads QA rejection notes and fixes specific issues.
+
+### code-review
+
+Senior code reviewer. Checks the diff for correctness, security vulnerabilities, data integrity, performance issues, and maintainability. Verifies acceptance criteria are actually met by the code. Read-only — reports APPROVED/REJECTED with file paths and line numbers.
+
+### browser-test
+
+Functional QA via Playwright. Opens the app in a browser, navigates to the relevant screen, and tests each acceptance criterion interactively — clicking buttons, filling forms, checking visibility. Screenshots evidence. Read-only — reports APPROVED/REJECTED.
+
+### design-review
+
+Visual design QA. Screenshots the UI and audits for hard blockers (clipped content, broken layout, missing elements, unreadable text). **Has write access** — fixes Critical and Major issues directly in code, re-screenshots, and loops up to 5 iterations. Reports APPROVED/REJECTED.
+
+### accessibility-audit
+
+WCAG 2.2 AA compliance audit. Uses Playwright's accessibility snapshot to check keyboard navigation, screen reader compatibility, color contrast (4.5:1 minimum), touch targets (44x44px minimum), semantic HTML, ARIA roles, and form accessibility. Read-only — reports APPROVED/REJECTED.
+
+### security-review
+
+Security engineer. Audits changed code for OWASP Top 10 vulnerabilities: injection (SQL, XSS, command), broken auth, secrets exposure, missing input validation, insecure crypto, path traversal, and data leaks. Follows data flow from user input to dangerous sinks. Read-only — reports APPROVED/REJECTED.
+
+### performance-check
+
+Performance engineer. Reviews code for unbounded queries, N+1 patterns, memory leaks, blocking operations, unnecessary re-renders, bundle bloat, and missing pagination. Optionally does a runtime check via Playwright if a dev server is available. Read-only — reports APPROVED/REJECTED.
+
+### test-coverage
+
+Test quality engineer. Runs the test suite, checks that new code has tests, verifies tests assert meaningful behavior (not no-ops), checks edge cases and error paths. Rejects if tests fail, new logic has no tests, or tests don't actually test anything. Read-only — reports APPROVED/REJECTED.
+
+---
+
+## Agent Chain Examples
+
+The `agents` array in each task defines which agents process it, in order. Mix and match based on what the task needs:
+
+```jsonc
+// Simple backend task — just code review
+"agents": ["task-worker", "code-review"]
+
+// Backend with security concerns (auth, payments, API)
+"agents": ["task-worker", "code-review", "security-review", "test-coverage"]
+
+// Web UI feature — full visual QA pipeline
+"agents": ["task-worker", "code-review", "browser-test", "design-review"]
+
+// Web UI with accessibility requirements
+"agents": ["task-worker", "code-review", "browser-test", "accessibility-audit", "design-review"]
+
+// Performance-critical feature
+"agents": ["task-worker", "code-review", "performance-check", "test-coverage"]
+
+// Full pipeline — everything
+"agents": ["task-worker", "code-review", "security-review", "test-coverage", "browser-test", "accessibility-audit", "performance-check", "design-review"]
+
+// Backend-only task — no QA needed
+"agents": ["task-worker"]
+
+// Mobile app (future — add your own agents)
+"agents": ["task-worker", "code-review", "ios-tester", "android-tester", "mobile-design-review"]
+```
+
+### Recommended chains by project type
+
+| Project Type | Recommended Chain |
+|---|---|
+| **Web app (UI)** | `task-worker → code-review → browser-test → design-review` |
+| **Web app (accessible)** | `task-worker → code-review → browser-test → accessibility-audit → design-review` |
+| **REST API** | `task-worker → code-review → security-review → test-coverage` |
+| **CLI tool** | `task-worker → code-review → test-coverage` |
+| **Library/SDK** | `task-worker → code-review → test-coverage → performance-check` |
+| **Auth/payments** | `task-worker → code-review → security-review → test-coverage` |
+| **Data pipeline** | `task-worker → code-review → performance-check → test-coverage` |
+| **Quick fix/chore** | `task-worker → code-review` |
+| **Spike/prototype** | `task-worker` |
+
+---
 
 ## Install
 
@@ -40,6 +122,8 @@ After installing, open `CLAUDE.md` in your project and fill in the marked sectio
 - Dev server URL and port
 - Target viewport (width x height)
 
+---
+
 ## Usage
 
 ### 1. Create a PRD
@@ -58,24 +142,32 @@ Describe your feature. Claude asks clarifying questions, then generates a struct
 
 Add tasks with title, description, tags, agent chain, and acceptance criteria. Tasks are stored in `tasks/tasks.json`.
 
-**The `agents` array controls which agents process each task:**
+Example task:
 
 ```json
-// Web UI task — full QA pipeline
-"agents": ["task-worker", "browser-test", "design-review"]
-
-// Backend/logic task — no QA needed
-"agents": ["task-worker"]
-
-// Mobile task (when you add mobile agents)
-"agents": ["task-worker", "ios-tester", "android-tester", "mobile-design-review"]
+{
+  "id": "T-001",
+  "title": "Add user login page",
+  "description": "Create a login page with email/password form",
+  "tags": ["feature", "ui"],
+  "status": "todo",
+  "priority": 1,
+  "agents": ["task-worker", "code-review", "browser-test", "accessibility-audit", "design-review"],
+  "acceptanceCriteria": [
+    "Login form with email and password fields",
+    "Form validation with error messages",
+    "Submit button sends POST to /api/auth/login",
+    "Redirect to /dashboard on success",
+    "Show error message on invalid credentials",
+    "npm run lint passes",
+    "npm run typecheck passes"
+  ],
+  "progress": "",
+  "test_plan": [],
+  "screenshots": [],
+  "notes": ""
+}
 ```
-
-**Tags describe the task type:**
-- `bug` — bug fix
-- `feature` — new feature
-- `ui` — has UI changes
-- `task` — chore, refactor, config
 
 ### 3. Run the Loop
 
@@ -107,11 +199,56 @@ Open `http://localhost:3000/board.html` — a live Kanban board that auto-refres
 
 ```
 /tasks list      — View all tasks grouped by status
-/tasks update    — Update task fields
+/tasks update    — Update task fields (including agents)
 /tasks remove    — Remove tasks
 /tasks           — Summary stats
 /frontend-design — Design guidance for UI work
 ```
+
+---
+
+## How It Works
+
+### Task Lifecycle
+
+```
+todo → in-progress → [task-worker: implement + quality gates + commit]
+                          ↓
+                     [agent 2: verify] → [agent 3: verify] → ... → done
+                          ↓ (if any rejects)
+                     back to todo (with notes) → full chain restarts
+```
+
+### Agent Chain Execution
+
+Each task has an `agents` array that defines its pipeline:
+
+1. **task-worker** (always first) — implements the code, runs quality gates, commits
+2. **Remaining agents** — each verifies the work and outputs APPROVED or REJECTED
+
+The chain runs sequentially. Wait for each agent to finish before spawning the next.
+
+### Rejection & Retry
+
+When any agent rejects:
+1. Task status goes back to `"todo"`
+2. Rejection details are written to the task's `notes` field
+3. The full chain restarts — task-worker reads the notes and fixes the issues
+4. ALL agents re-verify (because a fix might break something else)
+5. Maximum **3 full chain retries** before asking the user
+
+### Adding Custom Agents
+
+To add a new agent:
+
+1. Create `.claude/agents/{agent-name}.md` with instructions
+2. The agent must output **APPROVED** or **REJECTED** at the end
+3. Include specific issue descriptions in REJECTED output so task-worker can fix them
+4. Add the agent name to task `agents` arrays
+
+Example: to add an `ios-tester` agent that uses Maestro for iOS testing, create `.claude/agents/ios-tester.md` and add it to your mobile tasks: `["task-worker", "code-review", "ios-tester"]`.
+
+---
 
 ## What Gets Installed
 
@@ -119,67 +256,31 @@ Open `http://localhost:3000/board.html` — a live Kanban board that auto-refres
 your-project/
 ├── .claude/
 │   ├── agents/
-│   │   ├── task-worker.md       # Agent: implements one task per session
-│   │   ├── browser-test.md      # Agent: Playwright functional QA (web)
-│   │   └── design-review.md     # Agent: visual design QA with auto-fix (web)
+│   │   ├── task-worker.md          # Implements one task per session
+│   │   ├── code-review.md          # Code correctness, security, maintainability
+│   │   ├── browser-test.md         # Playwright functional QA (web)
+│   │   ├── design-review.md        # Visual design QA with auto-fix (web)
+│   │   ├── accessibility-audit.md  # WCAG 2.2 AA compliance (web)
+│   │   ├── security-review.md      # OWASP Top 10 vulnerability scan
+│   │   ├── performance-check.md    # Performance anti-patterns
+│   │   └── test-coverage.md        # Test quality verification
 │   ├── hooks/
-│   │   └── notify-macos.sh      # macOS notification when Claude needs input
-│   ├── settings.json            # Hook configuration
+│   │   └── notify-macos.sh         # macOS notification when Claude needs input
+│   ├── settings.json               # Hook configuration
 │   └── skills/
-│       ├── tasks/SKILL.md       # /tasks — manage task database
-│       ├── loop-tasks/SKILL.md  # /loop-tasks — autonomous orchestrator
-│       ├── prd/SKILL.md         # /prd — PRD generator
+│       ├── tasks/SKILL.md          # /tasks — manage task database
+│       ├── loop-tasks/SKILL.md     # /loop-tasks — autonomous orchestrator
+│       ├── prd/SKILL.md            # /prd — PRD generator
 │       ├── frontend-design/SKILL.md # /frontend-design — design guidance
 │       └── playwright-cli/SKILL.md  # /playwright-cli — browser automation
 ├── tasks/
-│   ├── tasks.json               # Task database
-│   └── board.html               # Visual task board
+│   ├── tasks.json                  # Task database
+│   └── board.html                  # Visual task board
 ├── screenshots/
-│   ├── reference/               # Design reference screenshots
-│   └── tasks/                   # Task-related screenshots
-└── CLAUDE.md                    # Project instructions (configured by /setup)
+│   ├── reference/                  # Design reference screenshots
+│   └── tasks/                      # Task-related screenshots
+└── CLAUDE.md                       # Project instructions
 ```
-
-## How It Works
-
-### Task Lifecycle
-
-```
-todo → in-progress → [quality gates] → commit → agent chain
-                                                    ↓
-                                          task-worker → agent2 → agent3 → ... → done
-                                                    ↓ (if any agent rejects)
-                                          back to todo (with notes) → retry chain
-```
-
-### Agent Chain
-
-Each task has an `agents` array that defines its processing pipeline:
-
-1. **task-worker** (always first) — implements the code, runs quality gates, commits
-2. **QA agents** (rest of the chain) — each verifies the work and outputs APPROVED or REJECTED
-
-The chain runs sequentially. If any agent rejects:
-- Task goes back to `"todo"` with rejection details in `notes`
-- Full chain restarts — task-worker reads the notes and fixes the issues
-- All agents re-verify (because a fix might break something else)
-- Maximum 3 full chain retries before asking the user
-
-### Adding Custom Agents
-
-To add a new agent to the system:
-
-1. Create `.claude/agents/{agent-name}.md` with instructions
-2. The agent must output **APPROVED** or **REJECTED** at the end
-3. Add the agent name to task `agents` arrays: `["task-worker", "your-agent"]`
-
-### Quality Gates
-
-Every task must pass the project's quality gates before committing. These are configured during `/setup` (e.g., typecheck, lint, test).
-
-### Re-work Loop
-
-If any agent rejects, the task goes back to `todo` with detailed findings in the `notes` field. The next task-worker reads those notes and fixes the specific issues (doesn't rebuild from scratch). Maximum 3 retries before asking the user.
 
 ## Requirements
 
