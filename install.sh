@@ -12,7 +12,7 @@ if [ -z "$1" ]; then
   echo "Usage: ./install.sh /path/to/your/project"
   echo ""
   echo "This installs the Claude Task Loop system into your project."
-  echo "After installing, open Claude Code in your project and run /setup to configure it."
+  echo "After installing, fill in CLAUDE.md with your project details."
   exit 1
 fi
 
@@ -45,29 +45,38 @@ fi
 # Copy template files
 echo "Copying files..."
 
-# .claude directory
+# .claude directory structure
 mkdir -p "$TARGET/.claude/agents"
 mkdir -p "$TARGET/.claude/hooks"
 mkdir -p "$TARGET/.claude/skills/tasks"
 mkdir -p "$TARGET/.claude/skills/loop-tasks"
-mkdir -p "$TARGET/.claude/skills/browser-test"
-mkdir -p "$TARGET/.claude/skills/design-review"
 mkdir -p "$TARGET/.claude/skills/prd"
 mkdir -p "$TARGET/.claude/skills/frontend-design"
 mkdir -p "$TARGET/.claude/skills/playwright-cli"
-mkdir -p "$TARGET/.claude/skills/setup"
 
+# Agents (11 total)
 cp "$TEMPLATE_DIR/.claude/agents/task-worker.md" "$TARGET/.claude/agents/"
+cp "$TEMPLATE_DIR/.claude/agents/code-review.md" "$TARGET/.claude/agents/"
+cp "$TEMPLATE_DIR/.claude/agents/browser-test.md" "$TARGET/.claude/agents/"
+cp "$TEMPLATE_DIR/.claude/agents/design-review.md" "$TARGET/.claude/agents/"
+cp "$TEMPLATE_DIR/.claude/agents/accessibility-audit.md" "$TARGET/.claude/agents/"
+cp "$TEMPLATE_DIR/.claude/agents/security-review.md" "$TARGET/.claude/agents/"
+cp "$TEMPLATE_DIR/.claude/agents/performance-check.md" "$TARGET/.claude/agents/"
+cp "$TEMPLATE_DIR/.claude/agents/test-coverage.md" "$TARGET/.claude/agents/"
+cp "$TEMPLATE_DIR/.claude/agents/ios-tester.md" "$TARGET/.claude/agents/"
+cp "$TEMPLATE_DIR/.claude/agents/android-tester.md" "$TARGET/.claude/agents/"
+cp "$TEMPLATE_DIR/.claude/agents/mobile-design-review.md" "$TARGET/.claude/agents/"
+
+# Hooks
 cp "$TEMPLATE_DIR/.claude/hooks/notify-macos.sh" "$TARGET/.claude/hooks/"
 chmod +x "$TARGET/.claude/hooks/notify-macos.sh"
+
+# Skills
 cp "$TEMPLATE_DIR/.claude/skills/tasks/SKILL.md" "$TARGET/.claude/skills/tasks/"
 cp "$TEMPLATE_DIR/.claude/skills/loop-tasks/SKILL.md" "$TARGET/.claude/skills/loop-tasks/"
-cp "$TEMPLATE_DIR/.claude/skills/browser-test/SKILL.md" "$TARGET/.claude/skills/browser-test/"
-cp "$TEMPLATE_DIR/.claude/skills/design-review/SKILL.md" "$TARGET/.claude/skills/design-review/"
 cp "$TEMPLATE_DIR/.claude/skills/prd/SKILL.md" "$TARGET/.claude/skills/prd/"
 cp "$TEMPLATE_DIR/.claude/skills/frontend-design/SKILL.md" "$TARGET/.claude/skills/frontend-design/"
 cp "$TEMPLATE_DIR/.claude/skills/playwright-cli/SKILL.md" "$TARGET/.claude/skills/playwright-cli/"
-cp "$TEMPLATE_DIR/.claude/skills/setup/SKILL.md" "$TARGET/.claude/skills/setup/"
 
 # Only copy settings.json if it doesn't exist (don't overwrite user's existing settings)
 if [ ! -f "$TARGET/.claude/settings.json" ]; then
@@ -101,16 +110,31 @@ fi
 
 echo ""
 echo "Done! Installed:"
-echo "  .claude/agents/task-worker.md"
-echo "  .claude/hooks/notify-macos.sh"
-echo "  .claude/skills/{tasks,loop-tasks,browser-test,design-review,prd,frontend-design,playwright-cli,setup}/"
-echo "  tasks/board.html"
-echo "  screenshots/{reference,tasks}/"
+echo ""
+echo "  Agents (11):"
+echo "    .claude/agents/task-worker.md"
+echo "    .claude/agents/code-review.md"
+echo "    .claude/agents/browser-test.md"
+echo "    .claude/agents/design-review.md"
+echo "    .claude/agents/accessibility-audit.md"
+echo "    .claude/agents/security-review.md"
+echo "    .claude/agents/performance-check.md"
+echo "    .claude/agents/test-coverage.md"
+echo "    .claude/agents/ios-tester.md"
+echo "    .claude/agents/android-tester.md"
+echo "    .claude/agents/mobile-design-review.md"
+echo ""
+echo "  Skills:"
+echo "    .claude/skills/{tasks,loop-tasks,prd,frontend-design,playwright-cli}/"
+echo ""
+echo "  Other:"
+echo "    tasks/board.html"
+echo "    screenshots/{reference,tasks}/"
 echo ""
 echo "Next steps:"
 echo "  1. cd $TARGET"
-echo "  2. Open Claude Code"
-echo "  3. Run /setup to configure for your project"
+echo "  2. Edit CLAUDE.md — fill in tech stack, quality gates, dev server, viewport"
+echo "  3. Open Claude Code"
 echo "  4. Run /prd to create a PRD"
 echo "  5. Run /tasks add to add tasks"
 echo "  6. Run /loop-tasks to start the autonomous loop"
