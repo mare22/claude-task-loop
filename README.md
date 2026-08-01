@@ -287,8 +287,22 @@ Everything the loop needs to resume is in `tasks/tasks.json`:
 | `attempts` | Failed QA cycles so far (stops at 3) |
 | `base_sha` | Commit the task started from |
 | `commit_sha` | The single commit produced when it passed |
-| `log` | Timestamped activity entries |
+| `log` | Structured activity timeline (see below) |
 | `notes` | Consolidated QA findings on rework |
+
+### The activity log
+
+Each `log` entry is an object, so the board can group a run by cycle and colour it by outcome:
+
+```json
+{ "ts": "2026-08-01 14:36", "cycle": 1, "agent": "code-review", "result": "REJECTED",
+  "summary": "2 blockers: N+1 query in BoardController.index(); missing null check on due_date" }
+```
+
+`result` is one of `DONE` · `APPROVED` · `REJECTED` · `BLOCKED` · `COMMITTED` · `INFO`, and
+`summary` is one line under ~140 characters. The board renders these as a timeline grouped by
+cycle, so a task that took three attempts reads as three labelled blocks rather than one long
+list. Full detail stays in `notes` — that's what `task-worker` reads; the log is for you.
 
 ### Adding Custom Agents
 

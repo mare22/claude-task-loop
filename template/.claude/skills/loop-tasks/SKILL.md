@@ -38,6 +38,64 @@ preflight (clean tree) → task-worker (edits + stages, no commit)
 
 ---
 
+## The Activity Log
+
+You are the only writer of the task's `log`. Every entry is a **structured object**, never a
+formatted string — the board renders these into a timeline, and free-form strings can't be
+grouped, coloured, or aligned.
+
+```json
+{
+  "ts": "2026-08-01 14:36",
+  "cycle": 1,
+  "agent": "code-review",
+  "result": "REJECTED",
+  "summary": "N+1 query in BoardController.index(); missing null check on due_date"
+}
+```
+
+| Field | Value |
+|---|---|
+| `ts` | `YYYY-MM-DD HH:MM` — get it with `date '+%Y-%m-%d %H:%M'` |
+| `cycle` | Which attempt this happened in: `attempts + 1`. Groups the timeline. |
+| `agent` | Agent name, or `orchestrator` for preflight/commit/gate events |
+| `result` | `DONE` · `APPROVED` · `REJECTED` · `BLOCKED` · `COMMITTED` · `INFO` |
+| `summary` | **One line, under ~140 characters.** The single most useful sentence. |
+
+### Writing good summaries
+
+The log is what the user reads on the board to understand a run without opening anything else.
+Each line must survive on its own.
+
+- **Say what changed or what broke**, not that a step occurred.
+  `"Reviewed 5 files, no blockers"` → weak. `"Verified all 4 criteria against the diff; boards
+  index is paginated as required"` → useful.
+- **On REJECTED, lead with the blocker count and the worst one.**
+  `"2 blockers: N+1 query in index(); missing null check on due_date"`
+- **On a rework DONE, say what was fixed**, not what was built.
+  `"Fixed N+1 with eager loading; added null guard on due_date"`
+- Keep the full detail in `notes` — that is what task-worker reads. The log is for humans.
+
+### When to append
+
+One entry per event, appended in the order things happen:
+
+| When | Entry |
+|---|---|
+| task-worker finishes | `agent: "task-worker"`, `result: "DONE"` (or `BLOCKED`) |
+| task-worker changed nothing | `agent: "task-worker"`, `result: "BLOCKED"`, summary `"No changes made"` |
+| you soft-reset an early commit | `agent: "orchestrator"`, `result: "INFO"` |
+| each QA agent returns | `agent: "<name>"`, its verdict, its one-line summary |
+| a quality gate fails pre-commit | `agent: "orchestrator"`, `result: "REJECTED"`, name the gate |
+| you commit | `agent: "orchestrator"`, `result: "COMMITTED"`, summary = short SHA + subject |
+
+Write the whole wave's entries in **one** `tasks.json` write after the round finishes — not one
+write per agent. Fewer writes, no interleaving.
+
+**Never overwrite `log`.** Read the array, append, write it back.
+
+---
+
 ## Step 0 — Preflight
 
 Run once, before the first task:
@@ -138,7 +196,8 @@ git status --porcelain             # must be NON-empty
   REJECTED verdict with the reason "no changes were made" and go to Step 5.
 - **BLOCKED** → Step 6.
 
-Record task-worker's summary and test plan into the task's `log` and `test_plan` fields.
+Append a `task-worker` entry to the task's `log` (see **The Activity Log**) and record its test
+plan into `test_plan`.
 
 ---
 
@@ -226,7 +285,8 @@ The one exception: if an agent returns **BLOCKED** because its environment is br
 browser, no simulator), skip the rest of *that lane* — the agents behind it share the same
 broken resource. Other lanes keep running.
 
-After the wave, append one `log` entry per agent with its verdict and a one-line summary.
+After the wave, append one `log` entry per agent — same `cycle`, each with its verdict and
+one-line summary — in a **single** `tasks.json` write. See **The Activity Log** for the format.
 
 ---
 
@@ -291,7 +351,8 @@ git rev-parse HEAD          # this is commit_sha
 Use `fix(T-XXX)` for tasks tagged `bug`, `feat(T-XXX)` otherwise.
 
 **2. The bookkeeping commit.** Now update `tasks/tasks.json`: `status: "done"`, `commit_sha` set
-to the SHA above, `attempts` reset to `0`, `notes` cleared, final `log` entry appended. Then:
+to the SHA above, `attempts` reset to `0`, `notes` cleared, and a final `COMMITTED` log entry
+appended (`agent: "orchestrator"`, summary = short SHA + commit subject). Then:
 
 ```bash
 git add tasks/tasks.json

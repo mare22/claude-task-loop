@@ -52,10 +52,35 @@ allowed-tools: Read, Write, Edit, Glob, Bash, AskUserQuestion
 | `attempts` | number | orchestrator | Failed QA cycles for this task. Loop stops at 3. **Lives on disk so the count survives a restart.** |
 | `base_sha` | string | orchestrator | Commit the task started from. QA agents review `git diff HEAD` against it. |
 | `commit_sha` | string | orchestrator | The single commit produced when the task passed |
-| `log` | string[] | orchestrator | Timestamped activity entries, one per element |
+| `log` | object[] | orchestrator | Structured activity timeline — see below |
 | `test_plan` | string[] | orchestrator | Manual verification steps, one per element |
 | `screenshots` | string[] | /tasks | Paths in `screenshots/tasks/`. Naming: `T-XXX-description.png` |
 | `notes` | string | /tasks, orchestrator | Extra context, plus consolidated QA findings on rework |
+
+### The `log` array
+
+Each entry is an **object**, not a formatted string — the board groups entries by cycle and
+colours them by result, which it cannot do with free-form text:
+
+```json
+"log": [
+  { "ts": "2026-08-01 14:30", "cycle": 1, "agent": "task-worker",  "result": "DONE",      "summary": "Created Board model, migration, and BoardController with index/create" },
+  { "ts": "2026-08-01 14:36", "cycle": 1, "agent": "code-review",  "result": "REJECTED",  "summary": "2 blockers: N+1 query in index(); missing null check on due_date" },
+  { "ts": "2026-08-01 14:36", "cycle": 1, "agent": "browser-test", "result": "APPROVED",  "summary": "All 4 criteria verified; board list renders and create dialog submits" },
+  { "ts": "2026-08-01 14:51", "cycle": 2, "agent": "task-worker",  "result": "DONE",      "summary": "Fixed N+1 with eager loading; added null guard on due_date" },
+  { "ts": "2026-08-01 14:58", "cycle": 2, "agent": "orchestrator", "result": "COMMITTED", "summary": "a1b2c3d feat(T-003): Add board list view" }
+]
+```
+
+| Field | Value |
+|---|---|
+| `ts` | `YYYY-MM-DD HH:MM` |
+| `cycle` | Which attempt it happened in (1-based) — groups the timeline |
+| `agent` | Agent name, or `orchestrator` |
+| `result` | `DONE` · `APPROVED` · `REJECTED` · `BLOCKED` · `COMMITTED` · `INFO` |
+| `summary` | One line, under ~140 characters |
+
+Full detail belongs in `notes` (what task-worker reads). The log is for humans reading the board.
 
 > **Single-writer rule.** During a loop run, **only the orchestrator writes `tasks.json`**.
 > task-worker and every QA agent report back to it instead. This is what makes the parallel QA

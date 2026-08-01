@@ -54,6 +54,14 @@
   .badge-commit{background:var(--mint10);color:var(--mint);font-family:'SF Mono',Monaco,monospace;text-transform:none}
   .card-agents{font-size:10px;color:var(--text3);margin-top:6px;font-family:'SF Mono',Monaco,monospace;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .card-criteria{font-size:10px;color:var(--text3);margin-left:auto}
+  .card-activity{display:flex;align-items:center;gap:6px;margin-top:8px;padding-top:8px;border-top:1px solid var(--border);font-size:10px;font-family:'SF Mono',Monaco,monospace;min-width:0}
+  .card-activity-agent{color:var(--text2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .card-activity-result{font-weight:700;letter-spacing:.3px;flex-shrink:0}
+  .card-activity-time{color:var(--text3);margin-left:auto;flex-shrink:0}
+  .card-activity.tone-ok .card-activity-result{color:var(--mint)}
+  .card-activity.tone-bad .card-activity-result{color:var(--red)}
+  .card-activity.tone-warn .card-activity-result{color:var(--amber)}
+  .card-activity.tone-muted .card-activity-result{color:var(--text3)}
 
   /* Modal overlay */
   .overlay{position:fixed;inset:0;background:rgba(0,0,0,.6);backdrop-filter:blur(4px);z-index:100;display:none;align-items:center;justify-content:center;padding:32px}
@@ -84,6 +92,29 @@
 
   /* Progress & test plan */
   .info-block{background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:14px 16px;font-size:13px;line-height:1.6;color:var(--text2);white-space:pre-wrap}
+
+  /* Activity log timeline */
+  .log-cycle{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:var(--text3);margin:14px 0 6px;display:flex;align-items:center;gap:8px}
+  .log-cycle:first-child{margin-top:0}
+  .log-cycle::after{content:'';flex:1;height:1px;background:var(--border)}
+  .log-group{background:var(--surface2);border:1px solid var(--border);border-radius:10px;overflow:hidden}
+  .log-entry{display:grid;grid-template-columns:42px 118px 74px 1fr;gap:10px;align-items:baseline;padding:9px 14px 9px 12px;border-left:2px solid transparent;font-size:12.5px;line-height:1.5}
+  .log-entry + .log-entry{border-top:1px solid var(--border)}
+  .log-time{color:var(--text3);font-family:'SF Mono',Monaco,monospace;font-size:11px;font-variant-numeric:tabular-nums}
+  .log-agent{color:var(--cyan);font-family:'SF Mono',Monaco,monospace;font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .log-result{font-size:9.5px;font-weight:700;letter-spacing:.4px;text-transform:uppercase;padding:2px 6px;border-radius:5px;text-align:center;white-space:nowrap}
+  .log-summary{color:var(--text2);min-width:0;overflow-wrap:anywhere}
+  .log-entry.tone-ok{border-left-color:var(--mint)}
+  .log-entry.tone-bad{border-left-color:var(--red)}
+  .log-entry.tone-warn{border-left-color:var(--amber)}
+  .log-result.tone-ok{background:var(--mint10);color:var(--mint)}
+  .log-result.tone-bad{background:var(--red10);color:var(--red)}
+  .log-result.tone-warn{background:var(--amber10);color:var(--amber)}
+  .log-result.tone-muted{background:var(--surface3);color:var(--text3)}
+  @media(max-width:560px){
+    .log-entry{grid-template-columns:42px 1fr;row-gap:4px}
+    .log-summary{grid-column:1/-1}
+  }
 
   /* Notes */
   .notes-block{font-size:13px;line-height:1.6;color:var(--text2)}
@@ -223,14 +254,82 @@ function renderBoard() {
   }
 }
 
-// `log` is an array of timestamped entries. Older task files used a single `progress` string.
-function renderLog(t) {
-  if (Array.isArray(t.log) && t.log.length) {
-    return `<ul class="criteria-list">${t.log.map(e => `<li>${esc(e)}</li>`).join('')}</ul>`;
+const RESULT_TONE = {
+  DONE: 'ok', APPROVED: 'ok', COMMITTED: 'ok',
+  REJECTED: 'bad', BLOCKED: 'warn', INFO: 'muted'
+};
+
+// Accepts the structured `log` array of {ts, cycle, agent, result, summary}.
+// Also tolerates older files: a plain `progress` string, or log entries that are
+// strings like "[2026-03-26 14:30] code-review APPROVED — summary".
+function normalizeEntry(e) {
+  if (e && typeof e === 'object') {
+    return {
+      ts: e.ts || '',
+      cycle: e.cycle || null,
+      agent: e.agent || '',
+      result: String(e.result || '').toUpperCase(),
+      summary: e.summary || ''
+    };
   }
-  if (typeof t.log === 'string' && t.log) return `<div class="info-block">${esc(t.log)}</div>`;
-  if (t.progress) return `<div class="info-block">${esc(t.progress)}</div>`;
-  return '<p class="empty">No activity recorded yet</p>';
+  const s = String(e ?? '');
+  const m = s.match(/^\[([^\]]+)\]\s+(\S+)\s+([A-Z]+)\s*(?:—|--|-)?\s*(.*)$/);
+  if (m) return { ts: m[1], cycle: null, agent: m[2], result: m[3], summary: m[4] };
+  return { ts: '', cycle: null, agent: '', result: '', summary: s };
+}
+
+// "2026-08-01 14:36" -> "14:36"; anything else passes through untouched.
+function clockOf(ts) {
+  const m = String(ts).match(/(\d{1,2}:\d{2})/);
+  return m ? m[1] : ts;
+}
+
+function renderLogEntry(e) {
+  const tone = RESULT_TONE[e.result] || 'muted';
+  return `
+    <div class="log-entry tone-${tone}">
+      <span class="log-time" title="${esc(e.ts)}">${esc(clockOf(e.ts))}</span>
+      <span class="log-agent">${esc(e.agent)}</span>
+      <span class="log-result tone-${tone}">${esc(e.result)}</span>
+      <span class="log-summary">${esc(e.summary)}</span>
+    </div>`;
+}
+
+function renderLog(t) {
+  const raw = t.log;
+
+  if (typeof raw === 'string' && raw) return `<div class="info-block">${esc(raw)}</div>`;
+  if (!Array.isArray(raw) || !raw.length) {
+    return t.progress
+      ? `<div class="info-block">${esc(t.progress)}</div>`
+      : '<p class="empty">No activity recorded yet</p>';
+  }
+
+  // Group consecutive entries by cycle so each retry reads as its own block.
+  const groups = [];
+  raw.map(normalizeEntry).forEach(e => {
+    const last = groups[groups.length - 1];
+    if (last && last.cycle === e.cycle) last.entries.push(e);
+    else groups.push({ cycle: e.cycle, entries: [e] });
+  });
+
+  return `<div class="log">${groups.map(g => `
+    ${g.cycle ? `<div class="log-cycle">Cycle ${g.cycle}</div>` : ''}
+    <div class="log-group">${g.entries.map(renderLogEntry).join('')}</div>
+  `).join('')}</div>`;
+}
+
+// The newest log entry, shown on the card so a running loop is legible without opening anything.
+function renderCardActivity(t) {
+  if (!Array.isArray(t.log) || !t.log.length) return '';
+  const e = normalizeEntry(t.log[t.log.length - 1]);
+  if (!e.agent && !e.result) return '';
+  const tone = RESULT_TONE[e.result] || 'muted';
+  return `<div class="card-activity tone-${tone}" title="${esc(e.summary)}">
+    <span class="card-activity-agent">${esc(e.agent)}</span>
+    <span class="card-activity-result">${esc(e.result)}</span>
+    <span class="card-activity-time">${esc(clockOf(e.ts))}</span>
+  </div>`;
 }
 
 function renderTags(tags) {
@@ -253,6 +352,7 @@ function render(containerId, tasks) {
         <span class="card-criteria">${(t.acceptanceCriteria || []).length} criteria</span>
       </div>
       ${t.agents && t.agents.length ? `<div class="card-agents">${t.agents.map(esc).join(' → ')}</div>` : ''}
+      ${renderCardActivity(t)}
     </div>
   `).join('');
 }
