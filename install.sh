@@ -48,35 +48,15 @@ echo "Copying files..."
 # .claude directory structure
 mkdir -p "$TARGET/.claude/agents"
 mkdir -p "$TARGET/.claude/hooks"
-mkdir -p "$TARGET/.claude/skills/tasks"
-mkdir -p "$TARGET/.claude/skills/loop-tasks"
-mkdir -p "$TARGET/.claude/skills/prd"
-mkdir -p "$TARGET/.claude/skills/frontend-design"
-mkdir -p "$TARGET/.claude/skills/playwright-cli"
+mkdir -p "$TARGET/.claude/skills"
 
-# Agents (11 total)
-cp "$TEMPLATE_DIR/.claude/agents/task-worker.md" "$TARGET/.claude/agents/"
-cp "$TEMPLATE_DIR/.claude/agents/code-review.md" "$TARGET/.claude/agents/"
-cp "$TEMPLATE_DIR/.claude/agents/browser-test.md" "$TARGET/.claude/agents/"
-cp "$TEMPLATE_DIR/.claude/agents/design-review.md" "$TARGET/.claude/agents/"
-cp "$TEMPLATE_DIR/.claude/agents/accessibility-audit.md" "$TARGET/.claude/agents/"
-cp "$TEMPLATE_DIR/.claude/agents/security-review.md" "$TARGET/.claude/agents/"
-cp "$TEMPLATE_DIR/.claude/agents/performance-check.md" "$TARGET/.claude/agents/"
-cp "$TEMPLATE_DIR/.claude/agents/test-coverage.md" "$TARGET/.claude/agents/"
-cp "$TEMPLATE_DIR/.claude/agents/ios-tester.md" "$TARGET/.claude/agents/"
-cp "$TEMPLATE_DIR/.claude/agents/android-tester.md" "$TARGET/.claude/agents/"
-cp "$TEMPLATE_DIR/.claude/agents/mobile-design-review.md" "$TARGET/.claude/agents/"
+# Agents and skills — copied wholesale so adding a new one needs no edit here
+cp -R "$TEMPLATE_DIR/.claude/agents/." "$TARGET/.claude/agents/"
+cp -R "$TEMPLATE_DIR/.claude/skills/." "$TARGET/.claude/skills/"
 
 # Hooks
 cp "$TEMPLATE_DIR/.claude/hooks/notify-macos.sh" "$TARGET/.claude/hooks/"
 chmod +x "$TARGET/.claude/hooks/notify-macos.sh"
-
-# Skills
-cp "$TEMPLATE_DIR/.claude/skills/tasks/SKILL.md" "$TARGET/.claude/skills/tasks/"
-cp "$TEMPLATE_DIR/.claude/skills/loop-tasks/SKILL.md" "$TARGET/.claude/skills/loop-tasks/"
-cp "$TEMPLATE_DIR/.claude/skills/prd/SKILL.md" "$TARGET/.claude/skills/prd/"
-cp "$TEMPLATE_DIR/.claude/skills/frontend-design/SKILL.md" "$TARGET/.claude/skills/frontend-design/"
-cp "$TEMPLATE_DIR/.claude/skills/playwright-cli/SKILL.md" "$TARGET/.claude/skills/playwright-cli/"
 
 # Only copy settings.json if it doesn't exist (don't overwrite user's existing settings)
 if [ ! -f "$TARGET/.claude/settings.json" ]; then
@@ -108,24 +88,17 @@ else
   echo "  Skipped CLAUDE.md (already exists — you may want to merge manually)"
 fi
 
+AGENT_COUNT=$(find "$TARGET/.claude/agents" -name '*.md' | wc -l | tr -d ' ')
+SKILL_LIST=$(find "$TARGET/.claude/skills" -mindepth 1 -maxdepth 1 -type d -exec basename {} \; | sort | paste -sd, -)
+
 echo ""
 echo "Done! Installed:"
 echo ""
-echo "  Agents (11):"
-echo "    .claude/agents/task-worker.md"
-echo "    .claude/agents/code-review.md"
-echo "    .claude/agents/browser-test.md"
-echo "    .claude/agents/design-review.md"
-echo "    .claude/agents/accessibility-audit.md"
-echo "    .claude/agents/security-review.md"
-echo "    .claude/agents/performance-check.md"
-echo "    .claude/agents/test-coverage.md"
-echo "    .claude/agents/ios-tester.md"
-echo "    .claude/agents/android-tester.md"
-echo "    .claude/agents/mobile-design-review.md"
+echo "  Agents ($AGENT_COUNT):"
+find "$TARGET/.claude/agents" -name '*.md' | sort | sed "s|$TARGET/|    |"
 echo ""
 echo "  Skills:"
-echo "    .claude/skills/{tasks,loop-tasks,prd,frontend-design,playwright-cli}/"
+echo "    .claude/skills/{$SKILL_LIST}/"
 echo ""
 echo "  Other:"
 echo "    tasks/board.html"
@@ -134,7 +107,8 @@ echo ""
 echo "Next steps:"
 echo "  1. cd $TARGET"
 echo "  2. Edit CLAUDE.md — fill in tech stack, quality gates, dev server, viewport"
-echo "  3. Open Claude Code"
-echo "  4. Run /prd to create a PRD"
-echo "  5. Run /tasks add to add tasks"
-echo "  6. Run /loop-tasks to start the autonomous loop"
+echo "  3. Commit or stash any uncommitted work — the loop needs a clean working tree"
+echo "  4. Open Claude Code"
+echo "  5. Run /prd to create a PRD"
+echo "  6. Run /tasks add to add tasks"
+echo "  7. Run /loop-tasks to start the autonomous loop"

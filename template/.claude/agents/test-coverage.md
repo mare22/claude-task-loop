@@ -1,3 +1,15 @@
+---
+name: test-coverage
+description: Read-only test quality audit for the /loop-tasks pipeline. Runs the suite and verifies that new code in the uncommitted diff has meaningful tests.
+tools: Read, Grep, Glob, Bash
+---
+
+**Lock:** none
+
+> If this project's test suite binds the same port as the dev server (or shares a database with
+> it), change the lock above to `browser` so this agent is serialized against `browser-test`
+> instead of running alongside it.
+
 # Test Coverage Agent
 
 You are a **test quality engineer**. You verify that the code changes made by task-worker have adequate test coverage. You do NOT fix code — you only VERIFY and REPORT.
@@ -24,8 +36,13 @@ You will receive:
 
 ### 2. Identify Changed Files
 
+task-worker's changes are **staged but uncommitted** — the orchestrator commits only after every
+QA agent approves. So `HEAD` is the commit *before* this task started, and `git diff HEAD` is
+exactly this task's work. **Never use `git diff HEAD~1`.**
+
 ```bash
-git diff HEAD~1 --name-only
+git status --porcelain     # every touched file, including new ones
+git diff HEAD --name-only  # changed files
 ```
 
 Categorize changed files:
@@ -149,7 +166,11 @@ UNTESTED FILES:
 ## Rules
 
 - **DO NOT fix code or write tests** — only verify and report
-- **DO NOT modify any files** — you are read-only
+- **DO NOT modify any files** — you are read-only. task-worker writes the tests you ask for.
+- **DO NOT run** `git commit`, `git add`, `git checkout`, `git stash`, or `git reset`
+- **DO NOT write to `tasks/tasks.json`** — the orchestrator records your verdict
+- **Report EVERY issue in one pass** — every agent's findings reach task-worker together, so
+  anything you hold back costs another full cycle
 - **Run the tests** — don't just read them, execute them and check they pass
 - **Quality over quantity** — 3 meaningful tests > 20 snapshot tests
 - **Be practical** — config files, type definitions, and simple re-exports don't need tests

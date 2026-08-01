@@ -16,8 +16,9 @@ Create detailed Product Requirements Documents that are clear, actionable, and s
 2. Ask 3-5 essential clarifying questions (with lettered options)
 3. Generate a structured PRD based on answers
 4. Save to `tasks/prd-[feature-name].md`
+5. Offer to turn the PRD's user stories into tasks in `tasks/tasks.json`
 
-**Important:** Do NOT start implementing. Just create the PRD.
+**Important:** Do NOT start implementing. Create the PRD, and optionally the task list.
 
 ---
 
@@ -118,6 +119,49 @@ Remaining questions or areas needing clarification.
 
 ---
 
+## Step 3: Turn the PRD into Tasks
+
+After saving the PRD, ask whether to generate tasks from it. If yes, follow
+`.claude/skills/tasks/SKILL.md` for the schema and write to `tasks/tasks.json`.
+
+Each **user story becomes one task**: `US-001` → `T-001`, with the story's acceptance criteria
+carried over verbatim plus the project's quality gates from `CLAUDE.md`.
+
+### Ask which pipeline — always
+
+The `agents` array decides how thoroughly each task is verified and how long it takes.
+**Never assign it silently.**
+
+Ask with **AskUserQuestion**, header `Pipeline`, offering 4 presets from
+`.claude/skills/tasks/SKILL.md` ordered thorough → fast, recommendation first. Quote **rounds**,
+not agent count — the orchestrator runs read-only verifiers concurrently in lanes, so four
+verifiers often cost the same wall-clock as one.
+
+For a PRD, ask **once for the batch default**, then:
+
+1. Apply the batch default to every task
+2. Override individual tasks where the story clearly differs — a UI story in an otherwise
+   backend PRD gets the web pipeline, a config chore gets `Quick`
+3. Show the result as a table and let the user adjust before writing
+
+```
+T-001  Login form                 feature, ui   Web UI          2 rounds
+T-002  POST /api/auth/login       feature       Backend / API   1 round
+T-003  Session cookie config      task          Quick           1 round
+
+Pipelines look right, or adjust any?
+```
+
+Then write all tasks in one go with `status: "todo"`, `attempts: 0`, `base_sha: ""`,
+`commit_sha: ""`, `log: []`, `test_plan: []`.
+
+Order `priority` by dependency — if `T-002`'s API is needed by `T-001`'s UI, give the API the
+lower number. The loop runs strictly in priority order, so this is how you express sequencing.
+
+Finish by telling the user to run `/loop-tasks`.
+
+---
+
 ## Writing for Junior Developers
 
 The PRD reader may be a junior developer or AI agent. Therefore:
@@ -148,3 +192,5 @@ Before saving the PRD:
 - [ ] Functional requirements are numbered and unambiguous
 - [ ] Non-goals section defines clear boundaries
 - [ ] Saved to `tasks/prd-[feature-name].md`
+- [ ] Offered to generate tasks — and if accepted, **asked which pipeline** rather than guessing
+- [ ] Task priorities ordered by dependency

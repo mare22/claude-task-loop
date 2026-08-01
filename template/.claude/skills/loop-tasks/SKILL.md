@@ -1,9 +1,9 @@
 ---
 name: loop-tasks
 description: >
-  Run the autonomous task loop. For each task, spawns agents in chain (from the task's agents array)
-  one by one. A task is "done" only when every agent in the chain approves.
-  Use when the user runs /loop-tasks or says "start the loop", "run tasks", "build tasks".
+  Run the autonomous task loop. For each task: task-worker implements (uncommitted), then all QA
+  agents verify in parallel waves, then the orchestrator commits. Use when the user runs /loop-tasks
+  or says "start the loop", "run tasks", "build tasks".
 user-invocable: true
 ---
 
@@ -11,269 +11,377 @@ user-invocable: true
 
 ## Overview
 
-You are an **orchestrator**. You do NOT implement code yourself. You:
-1. Read `tasks/tasks.json` and find the next `todo` task (lowest priority number)
-2. Run the task's **agent chain** — spawn each agent one by one, in order
-3. **Log activity** — after each agent finishes, append a timestamped log entry to the task's `progress` field
-4. A task is **done** only when ALL agents in the chain output APPROVED (or NEXT/COMPLETE for task-worker)
-5. If any agent outputs REJECTED, restart the chain from task-worker
-6. Loop until all tasks are done or you hit a blocker
+You are an **orchestrator**. You do NOT implement code yourself.
+
+Three invariants govern the whole system. Never break them:
+
+1. **Only `task-worker` modifies code.** Every other agent is read-only.
+2. **Only you (the orchestrator) commit.** One commit per task, after every agent approves.
+3. **Only you write `tasks/tasks.json`.** Agents report back to you; you record it.
+
+Because you own the commit, `HEAD` never moves while a task is in flight. That makes
+`git diff HEAD` exactly equal to "the work for this task" — for every QA agent, on every
+rework cycle, with no bookkeeping. Do not break this by committing early.
+
+### The cycle
+
+```
+preflight (clean tree) → task-worker (edits + stages, no commit)
+                              ↓
+                    QA WAVE — agents run in parallel lanes
+                              ↓
+                    collect ALL verdicts (no fail-fast)
+                              ↓
+   any REJECTED → consolidate → attempts++ → back to task-worker
+   all APPROVED → run quality gates → commit → status: done
+```
 
 ---
 
-## Activity Logging
+## Step 0 — Preflight
 
-**CRITICAL: You MUST log every agent's activity to the task's `progress` field in `tasks/tasks.json`.**
+Run once, before the first task:
 
-Get the current timestamp by running: `date '+%Y-%m-%d %H:%M'`
-
-### When to log
-
-Log **BEFORE** spawning each agent and **AFTER** each agent finishes:
-
-```
-[2026-03-26 14:30] task-worker START
-[2026-03-26 14:35] task-worker DONE — Created Board model, migration, controller. Committed feat(T-003).
-[2026-03-26 14:36] code-review START
-[2026-03-26 14:37] code-review APPROVED — Reviewed 5 files. No blockers found. Suggestion: add index on board_id.
-[2026-03-26 14:38] browser-test START
-[2026-03-26 14:40] browser-test APPROVED — All 4 criteria verified. Screenshots at /tmp/qa/T-003.png
-[2026-03-26 14:41] design-review START
-[2026-03-26 14:43] design-review APPROVED — No critical issues. Fixed minor spacing. Committed fix(T-003).
+```bash
+git rev-parse --git-dir            # must be a git repo
+git status --porcelain             # must be EMPTY
 ```
 
-On rejection:
-```
-[2026-03-26 14:37] code-review REJECTED — 2 blockers: 1) N+1 query in index(), 2) Missing null check on due_date
-```
-
-On re-work (next chain pass):
-```
-[2026-03-26 14:50] task-worker START (re-work: fixing code-review issues)
-[2026-03-26 14:53] task-worker DONE — Fixed N+1 query with eager loading, added null check. Committed fix(T-003).
-[2026-03-26 14:54] code-review START
-[2026-03-26 14:55] code-review APPROVED — Previous issues resolved. Clean.
-```
-
-### How to log
-
-1. Read `tasks/tasks.json`
-2. **Append** the new log line to the existing `progress` field (never overwrite previous entries)
-3. Write `tasks/tasks.json`
-
-**Note:** task-worker logs its own START/DONE entries (it has write access). You log for all QA agents since they are read-only. Always check what task-worker already logged before adding your own entries.
-
----
-
-## When to STOP and ask the user
-
-Only stop when:
-- **All tasks done** — nothing left to build
-- **Agent hit a blocker** — something broken, can't proceed
-- **Chain failed 3 times** on the same task — needs human input
-
-Do NOT stop for:
-- Successful task completion — report and continue
-- Chain failures (attempts 1-2) — auto-retry
+- **Not a git repo** → STOP. Tell the user the loop needs git (it reviews the working-tree diff).
+- **Dirty working tree** → it depends on why:
+  - If `tasks.json` has a task in `in-progress` or `blocked`, this is an **interrupted run**.
+    The dirty tree is that task's own uncommitted work. Say so, and resume it in Step 1.
+  - Otherwise it is the user's own work → STOP. Show `git status --short` and ask them to commit
+    or stash first. A dirty tree would be reviewed as if it were the task's work, and swept into
+    the task's commit.
 
 ---
 
 ## Step 1 — Load State
 
-**CRITICAL: Re-read `tasks/tasks.json` from disk EVERY iteration.** Never use cached data.
+**Re-read `tasks/tasks.json` from disk EVERY iteration.** Never use cached data — you may have
+been restarted or compacted since the last write.
 
 1. Read `tasks/tasks.json`
-2. Find next task: `status: "todo"`, lowest `priority` number
-3. If zero `todo` tasks → **"All tasks complete!"** → STOP
-4. If the task's `agents` array is missing or empty, default to `["task-worker"]`
+2. **Resume before you start anything new.** If a task is already `in-progress` or `blocked` and
+   the working tree is dirty, a previous run was interrupted mid-task. Pick that task up again —
+   its uncommitted work is still in the tree, and its `base_sha` is still valid. Do not start a
+   different task while another task's changes are sitting in the working tree.
+3. Otherwise find the next task: `status: "todo"`, lowest `priority` number
+4. If zero `todo` tasks → **"All tasks complete!"** → STOP
+5. If the task's `agents` array is missing or empty, default to `["task-worker"]`
+6. Read the task's `attempts` field (default `0`). If it is already `>= 3`, this task previously
+   exhausted its retries — go to **Blocked / Exhausted** in Step 6.
+
+Record the starting commit:
+
+```bash
+git rev-parse HEAD
+```
+
+Write it to the task's `base_sha` and set `status: "in-progress"`. This is your record of what
+the task built on, and your check that task-worker did not commit behind your back.
 
 ---
 
 ## Step 2 — Announce
 
 ```
-Starting T-XXX: [Title]...
-Agent chain: task-worker → code-review → browser-test → design-review
+T-XXX [Title] — attempt N/3
+  Lanes: [static: code-review, security-review, test-coverage] [browser: browser-test → design-review]
 ```
 
-Immediately proceed — do NOT wait for confirmation.
+Proceed immediately — do NOT wait for confirmation.
 
 ---
 
-## Step 3 — Run Agent Chain
+## Step 3 — Run task-worker
 
-The task's `agents` array defines the chain. Example: `["task-worker", "code-review", "browser-test", "design-review"]`
-
-**For each agent in the chain, spawn it sequentially. Wait for each to finish before spawning the next.**
-
-### Agent 1: task-worker (always first)
-
-Spawn a **fresh** Agent (general-purpose) with this prompt:
+Spawn a **fresh** agent (`subagent_type: task-worker`, or a general-purpose agent instructed to
+follow `.claude/agents/task-worker.md` exactly):
 
 ```
-You are a task worker. Follow the instructions in .claude/agents/task-worker.md exactly.
+Implement task [T-XXX] from tasks/tasks.json.
 
-Your assigned task:
 - ID: [T-XXX]
 - Title: [title]
+- Description: [description]
+- Acceptance Criteria:
+  [list every criterion]
+- Notes: [the notes field — on a rework pass this contains the consolidated QA findings]
 
-Read tasks/tasks.json, find task [T-XXX], set it to in-progress, implement it, run quality checks, commit if all pass, update tasks.json progress and test_plan fields.
+Rules you must not break:
+- Do NOT run `git commit`. Stage your work with `git add` and stop there. The orchestrator commits.
+- Do NOT write to tasks/tasks.json. Report back to me instead; I record it.
+- Run every quality gate command from CLAUDE.md and get them passing before you report DONE.
 
-IMPORTANT: Log your activity to the progress field with timestamps:
-- Append "[YYYY-MM-DD HH:MM] task-worker START" when you begin (use `date '+%Y-%m-%d %H:%M'`)
-- Append "[YYYY-MM-DD HH:MM] task-worker DONE — [summary]" when you finish
+Read CLAUDE.md for project conventions first. For UI work, use the /frontend-design skill.
 
-Do NOT set status to "done" — the orchestrator handles that.
-
-For UI work, use the /frontend-design skill for design guidance.
-
-Read CLAUDE.md for project conventions before starting.
-
-Output NEXT when done if more tasks remain, or COMPLETE if all tasks are done.
+Report DONE with a summary + test plan, or BLOCKED with the reason.
 ```
 
-Wait for the agent to finish.
+### Verify the work actually happened
 
-- If output contains **BLOCKED** → STOP and ask the user (see Step 5)
-- If output contains **NEXT** or **COMPLETE** → task-worker approved, continue to next agent in chain
+Do not trust the DONE signal. Check:
 
-### Remaining agents (QA/verification)
+```bash
+git rev-parse HEAD                 # compare to base_sha
+git status --porcelain             # must be NON-empty
+```
 
-For each subsequent agent in the chain (index 1, 2, 3, ...):
+- **HEAD moved** — task-worker committed despite the rule. Undo it without losing the work:
+  ```bash
+  git reset --soft <base_sha>
+  ```
+  Log it and carry on.
+- **Working tree is clean** — task-worker changed nothing. This is a false DONE. Treat it as a
+  REJECTED verdict with the reason "no changes were made" and go to Step 5.
+- **BLOCKED** → Step 6.
 
-**Before spawning:** Log `[timestamp] {agent-name} START` to the task's `progress` field in tasks.json.
+Record task-worker's summary and test plan into the task's `log` and `test_plan` fields.
 
-Spawn a **fresh** Agent with this prompt:
+---
+
+## Step 4 — Run the QA Wave
+
+The remaining entries in the task's `agents` array are QA agents. They are all read-only, so
+most of them can run **at the same time**. What stops them is not read/write — it is **shared
+singleton resources**.
+
+### Lanes
+
+Read the `**Lock:**` line near the top of each `.claude/agents/{name}.md`. Absent → `none`.
+
+| Lock | Meaning | Scheduling |
+|---|---|---|
+| `none` | No shared resource | Every such agent gets its own lane — all fully parallel |
+| `browser` | Drives `playwright-cli` | ALL browser agents share ONE lane, run in array order |
+| `ios` | Drives the iOS simulator | One shared lane |
+| `android` | Drives the Android emulator | One shared lane |
+| `ios+android` | Needs both devices | Runs in a final round, after both device lanes drain |
+
+**Why `browser` is one lane:** `playwright-cli` is a single global session — `open` and `close`
+take no session id. Two agents driving it concurrently will close each other's browser mid-test
+and produce flaky false rejections.
+
+### Execution — rounds
+
+Run the lanes as rounds. **Every spawn in a round goes in a SINGLE message with multiple Agent
+tool calls** — that is what makes them run concurrently. One call per message is sequential and
+defeats the entire design.
+
+- **Round 1:** every `none`-lock agent, plus the *first* agent of each locked lane.
+- **Round 2:** the *second* agent of each locked lane (if any).
+- **Round N:** continue until every lane is drained.
+- **Final round:** any multi-lock agent (`ios+android`).
+
+Worked example — `["task-worker", "code-review", "security-review", "test-coverage", "browser-test", "accessibility-audit", "design-review"]`:
 
 ```
-You are a QA/verification agent. Follow the instructions in .claude/agents/{AGENT_NAME}.md exactly.
+Round 1 (one message, 4 concurrent):  code-review │ security-review │ test-coverage │ browser-test
+Round 2 (one message, 1 agent):       accessibility-audit
+Round 3 (one message, 1 agent):       design-review
+```
+
+Six QA agents in three rounds instead of six.
+
+### The prompt for each QA agent
+
+```
+You are a read-only QA agent. Follow .claude/agents/{AGENT_NAME}.md exactly.
 
 ## Task
 - ID: [T-XXX]
 - Title: [title]
 - Acceptance Criteria:
-  [list all criteria from the task]
+  [list every criterion]
+
+## Where the work is
+task-worker's changes are STAGED BUT UNCOMMITTED. Review the working tree:
+  git status --porcelain     — every file touched, including new untracked files
+  git diff HEAD              — the full diff for this task
+Do NOT use `git diff HEAD~1` — HEAD is the commit BEFORE this task started.
 
 ## Context
-Read CLAUDE.md for project context (dev server URL, viewport, brand colors, etc.).
+Read CLAUDE.md for project context (dev server URL, viewport, brand colors).
 Check screenshots/reference/ for design targets if they exist.
 
-Follow your agent instructions and output APPROVED, REJECTED, or BLOCKED with details.
+## Rules
+- You are READ-ONLY. Do not edit, create, or delete any file. Do not run git commit,
+  git add, git checkout, git stash, or git reset. task-worker fixes what you find.
+- Do not write to tasks/tasks.json. Report to me; I record it.
+- Report every issue with file:line and a concrete suggested fix — task-worker gets ALL
+  findings from ALL agents at once and fixes them in a single pass. Be complete.
+
+Output APPROVED, REJECTED, or BLOCKED with details.
 ```
 
-Wait for the agent to finish.
+### Collecting verdicts
 
-**After the agent finishes:** Log the result to the task's `progress` field:
-- `[timestamp] {agent-name} APPROVED — [brief summary from agent output]`
-- `[timestamp] {agent-name} REJECTED — [brief summary of issues from agent output]`
-- `[timestamp] {agent-name} BLOCKED — [reason from agent output]`
+**Do NOT stop the wave on the first REJECTED.** Let every agent finish and collect all of
+them. Surfacing every problem in one cycle is the point — it is what lets task-worker fix
+everything in one rework pass instead of one problem per pass.
 
-Then:
-- If **APPROVED** → continue to next agent in chain
-- If **REJECTED** → go to Step 4 (Handle Rejection)
-- If **BLOCKED** → STOP and ask the user (see Step 5 — Blocked)
+The one exception: if an agent returns **BLOCKED** because its environment is broken (no
+browser, no simulator), skip the rest of *that lane* — the agents behind it share the same
+broken resource. Other lanes keep running.
+
+After the wave, append one `log` entry per agent with its verdict and a one-line summary.
 
 ---
 
-## Step 4 — Handle Rejection
+## Step 5 — Decide
 
-When any agent in the chain outputs REJECTED:
+### Any REJECTED
 
-1. Read `tasks/tasks.json`
-2. Set `status: "todo"` for this task
-3. Update the task's `notes` field with the rejection findings:
+1. Consolidate **every** rejection from **every** agent into the task's `notes`:
    ```
-   "notes": "QA FAILED (attempt N/3) by [agent-name] — [summary]. Issues: 1) [issue] 2) [issue]"
-   ```
-4. Write `tasks/tasks.json`
-5. Increment the chain failure count for this task
-6. If failure count reaches **3** → STOP and ask the user (see Step 5)
-7. Otherwise, **auto-retry** — go back to Step 1 (the task is "todo" again, task-worker will read the notes and fix the issues, then the FULL chain runs again from the beginning)
+   QA FAILED (attempt N/3)
 
-**Important:** The full chain restarts from task-worker on every retry. This ensures:
-- task-worker reads the rejection notes and fixes the specific issues
-- ALL agents re-verify (a design fix might break functionality)
+   [code-review] REJECTED
+     1. api/boards.ts:42 — N+1 query in index(); use eager loading
+   [browser-test] REJECTED
+     1. Submit button does nothing — POST /api/boards returns 500
+   [design-review] REJECTED
+     1. [Critical] Card title clipped at 320px — needs min-width or truncation
+   ```
+2. Set `status: "todo"`, increment `attempts`, write `tasks/tasks.json`
+3. If `attempts >= 3` → Step 6 (Exhausted)
+4. Otherwise re-read `tasks/tasks.json`, set this task back to `in-progress`, and go to
+   **Step 3** — task-worker reads the consolidated notes and fixes everything in one pass. The
+   working tree still holds the previous changes, so it builds on them rather than starting over.
+
+   Retry at Step 3, **not** Step 1. Step 1 re-selects by priority, and if a higher-priority task
+   was added while this one was running you would switch tasks with uncommitted work still in
+   the tree. Keep `base_sha` — nothing has been committed, so it is still correct.
+
+`attempts` lives in `tasks.json`, not in your context. Read it from disk each cycle — if this
+session restarts or compacts, the count survives.
+
+### All APPROVED — commit
+
+You are the only committer. Run the project's quality gates yourself first — a QA cycle can
+regress them, and this is the last gate before the work is permanent:
+
+```bash
+# every quality gate command from CLAUDE.md
+```
+
+If a gate fails, treat it as a REJECTED verdict (reason: which gate, and its output) and go
+back to Step 3. Do not commit failing code.
+
+If they pass, commit in two steps — **the code first, the task record second**:
+
+**1. The work commit.** Exclude `tasks/tasks.json`; the task record isn't final yet (it can't
+hold its own commit SHA) and mixing it in would leave the tree dirty afterwards.
+
+```bash
+git add -A -- ':!tasks/tasks.json'
+git commit -m "$(cat <<'EOF'
+feat(T-XXX): Task Title
+
+[one-line summary of what was implemented]
+
+Co-Authored-By: Claude <noreply@anthropic.com>
+EOF
+)"
+git rev-parse HEAD          # this is commit_sha
+```
+
+Use `fix(T-XXX)` for tasks tagged `bug`, `feat(T-XXX)` otherwise.
+
+**2. The bookkeeping commit.** Now update `tasks/tasks.json`: `status: "done"`, `commit_sha` set
+to the SHA above, `attempts` reset to `0`, `notes` cleared, final `log` entry appended. Then:
+
+```bash
+git add tasks/tasks.json
+git commit -m "chore(T-XXX): update task record"
+```
+
+**Verify the tree is clean again** (`git status --porcelain` empty) before starting the next
+task — that is Step 0's precondition restored. If anything is still dirty, something wrote
+outside the task scope; stop and show the user.
 
 ---
 
-## Step 5 — Report & Continue
+## Step 6 — Stop conditions
 
-### Success (all agents approved):
+Stop and ask the user ONLY for these. Everything else auto-continues.
 
-1. Read `tasks/tasks.json`, set `status: "done"` for this task
-2. Write `tasks/tasks.json`
-3. Report:
+### Blocked
 
 ```
-T-XXX [Title] — Done ✓
-  [one-line summary]
-  Chain: task-worker ✓ → code-review ✓ → browser-test ✓ → design-review ✓
-  Files: [key files]
-
-Starting T-YYY: [Next Title]...
-```
-
-Go back to Step 1.
-
-### Chain Failed (retry):
-
-```
-T-XXX [Title] — Rejected by [agent-name] (attempt N/3)
-  Issues: [brief list]
-  Re-dispatching full chain...
-
-Starting T-XXX: [Title] (fixing [agent-name] issues)...
-```
-
-Go back to Step 1.
-
-### Blocked:
-
-```
-T-XXX [Title] — Blocked
+T-XXX [Title] — Blocked by [agent]
 
 Problem: [what went wrong]
 
+Uncommitted work is still in the working tree.
+
 Options:
 1. Retry with a fresh agent
-2. Skip this task and continue (sets status to "skipped")
-3. I'll give you guidance
+2. Skip this task (status: "skipped") — I'll `git stash` the partial work first
+3. Give me guidance
 
 What do you want to do?
 ```
 
-If the user chooses to skip: set `status: "skipped"` in `tasks/tasks.json`, then go back to Step 1.
+Set `status: "blocked"` in `tasks.json` so the board shows it while you wait.
 
-### Chain Failed 3 times:
+### Exhausted (attempts >= 3)
 
 ```
 T-XXX [Title] — Failed 3 times
 
-Last rejection by: [agent-name]
 Persistent issues:
-[list]
+[the notes field]
 
 Options:
-1. I'll look at it and give guidance
-2. Skip this task for now (sets status to "skipped")
-3. Retry one more time
+1. Give me guidance and I'll retry (resets attempts)
+2. Skip this task (status: "skipped")
+3. Retry once more anyway
 
 What do you want to do?
 ```
 
-If the user chooses to skip: set `status: "skipped"` in `tasks/tasks.json`, then go back to Step 1.
+### Skipping
+
+If the user skips a task, the working tree still holds partial work — it must not leak into
+the next task. Stash it, then set `status: "skipped"`:
+
+```bash
+git stash push -u -m "T-XXX skipped"
+```
+
+Tell the user how to get it back (`git stash list` / `git stash pop`).
+
+---
+
+## Step 7 — Report & Continue
+
+```
+T-XXX [Title] — Done ✓  (attempt 2/3, commit a1b2c3d)
+  [one-line summary]
+  Round 1: code-review ✓  security-review ✓  test-coverage ✓  browser-test ✓
+  Round 2: accessibility-audit ✓
+  Round 3: design-review ✓
+  Files: [key files]
+
+T-YYY [Next Title] — attempt 1/3
+```
+
+Go back to Step 1.
 
 ---
 
 ## Rules
 
-- **RE-READ tasks.json FROM DISK every iteration** — never use cached data
-- **LOG EVERY AGENT'S ACTIVITY** — append timestamped entries to the `progress` field
-- **NEVER implement code yourself** — always spawn fresh agents
-- **RUN THE FULL AGENT CHAIN** — every agent in the task's `agents` array, sequentially
-- **RESTART FROM task-worker on rejection** — full chain re-runs after task-worker fixes
-- **AUTO-CONTINUE after success AND chain failure** — retry up to 3 times
-- **STOP only when blocked, all done, or 3 chain failures**
-- **Fresh agents every time** — never resume, always spawn new
-- **Sequential execution** — one task at a time, one agent at a time
-- **The agents array is the source of truth** — do NOT hardcode which agents to run
+- **NEVER implement code yourself** — always spawn task-worker
+- **NEVER let a QA agent modify code** — they are read-only; task-worker fixes everything
+- **NEVER commit before every agent approves** — one commit per task, made by you
+- **NEVER let an agent write tasks.json** — you are the single writer
+- **RE-READ tasks.json FROM DISK every iteration** — `attempts` and `notes` live there, not in your context
+- **BATCH each round into ONE message** — multiple Agent calls in one message run concurrently; separate messages do not
+- **COLLECT ALL VERDICTS** — never fail-fast; one cycle should surface every problem
+- **RESPECT THE LOCKS** — two agents sharing a browser or a simulator will corrupt each other
+- **VERIFY, DON'T TRUST** — check the tree changed before believing DONE; run the gates before committing
+- **The agents array is the source of truth** — never hardcode which agents run

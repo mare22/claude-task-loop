@@ -22,18 +22,19 @@
   .header .stats{margin-left:auto;display:flex;gap:16px;font-size:13px;color:var(--text2)}
   .header .stats span{display:flex;align-items:center;gap:6px}
   .header .stats .dot{width:8px;height:8px;border-radius:50%;display:inline-block}
-  .dot-todo{background:var(--text3)}.dot-progress{background:var(--amber)}.dot-done{background:var(--mint)}.dot-skipped{background:var(--red)}
+  .dot-todo{background:var(--text3)}.dot-progress{background:var(--amber)}.dot-blocked{background:var(--red)}.dot-done{background:var(--mint)}.dot-skipped{background:var(--text3)}
 
   /* Board */
-  .board{display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:20px;padding:24px 32px;height:calc(100vh - 81px);overflow:hidden}
+  .board{display:grid;grid-template-columns:repeat(5,1fr);gap:20px;padding:24px 32px;height:calc(100vh - 81px);overflow:hidden}
   .column{background:var(--surface);border-radius:12px;border:1px solid var(--border);display:flex;flex-direction:column;overflow:hidden}
   .column-header{padding:16px 20px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:10px;flex-shrink:0}
   .column-header h2{font-size:14px;font-weight:600;text-transform:uppercase;letter-spacing:.5px}
   .column-header .count{background:var(--surface3);color:var(--text2);font-size:11px;font-weight:700;padding:2px 8px;border-radius:10px}
   .col-todo .column-header h2{color:var(--text2)}
   .col-progress .column-header h2{color:var(--amber)}
+  .col-blocked .column-header h2{color:var(--red)}
   .col-done .column-header h2{color:var(--mint)}
-  .col-skipped .column-header h2{color:var(--red)}
+  .col-skipped .column-header h2{color:var(--text3)}
   .column-body{padding:12px;overflow-y:auto;flex:1;display:flex;flex-direction:column;gap:10px}
 
   /* Cards */
@@ -49,6 +50,8 @@
   .badge-ui{background:var(--cyan10);color:var(--cyan)}
   .badge-task{background:var(--amber10);color:var(--amber)}
   .badge-priority{background:var(--surface3);color:var(--text2);font-family:'SF Mono',Monaco,monospace}
+  .badge-attempts{background:var(--red10);color:var(--red);font-family:'SF Mono',Monaco,monospace}
+  .badge-commit{background:var(--mint10);color:var(--mint);font-family:'SF Mono',Monaco,monospace;text-transform:none}
   .card-agents{font-size:10px;color:var(--text3);margin-top:6px;font-family:'SF Mono',Monaco,monospace;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .card-criteria{font-size:10px;color:var(--text3);margin-left:auto}
 
@@ -97,6 +100,7 @@
   ::-webkit-scrollbar-thumb:hover{background:var(--text3)}
 
   @media(max-width:1100px){.board{grid-template-columns:1fr 1fr;height:auto}.column{max-height:60vh}}
+  @media(max-width:1200px){.board{grid-template-columns:repeat(3,1fr);height:auto;overflow-y:auto}.column{max-height:60vh}}
   @media(max-width:700px){.board{grid-template-columns:1fr;height:auto}.column{max-height:60vh}}
 </style>
 </head>
@@ -108,6 +112,7 @@
   <div class="stats">
     <span><span class="dot dot-todo"></span> Todo: <strong id="statTodo">0</strong></span>
     <span><span class="dot dot-progress"></span> In Progress: <strong id="statProgress">0</strong></span>
+    <span><span class="dot dot-blocked"></span> Blocked: <strong id="statBlocked">0</strong></span>
     <span><span class="dot dot-done"></span> Done: <strong id="statDone">0</strong></span>
     <span><span class="dot dot-skipped"></span> Skipped: <strong id="statSkipped">0</strong></span>
   </div>
@@ -121,6 +126,10 @@
   <div class="column col-progress">
     <div class="column-header"><h2>In Progress</h2><span class="count" id="countProgress">0</span></div>
     <div class="column-body" id="colProgress"></div>
+  </div>
+  <div class="column col-blocked">
+    <div class="column-header"><h2>Blocked</h2><span class="count" id="countBlocked">0</span></div>
+    <div class="column-body" id="colBlocked"></div>
   </div>
   <div class="column col-done">
     <div class="column-header"><h2>Done</h2><span class="count" id="countDone">0</span></div>
@@ -198,7 +207,7 @@ function renderBoard() {
   const data = TASKS_DATA;
   document.getElementById('projectName').textContent = data.project;
 
-  const cols = { todo: [], 'in-progress': [], done: [], skipped: [] };
+  const cols = { todo: [], 'in-progress': [], blocked: [], done: [], skipped: [] };
   data.tasks.forEach(t => {
     const s = t.status || 'todo';
     if (cols[s]) cols[s].push(t); else cols.todo.push(t);
@@ -206,19 +215,22 @@ function renderBoard() {
 
   Object.values(cols).forEach(arr => arr.sort((a, b) => a.priority - b.priority));
 
-  document.getElementById('statTodo').textContent = cols.todo.length;
-  document.getElementById('statProgress').textContent = cols['in-progress'].length;
-  document.getElementById('statDone').textContent = cols.done.length;
-  document.getElementById('statSkipped').textContent = cols.skipped.length;
-  document.getElementById('countTodo').textContent = cols.todo.length;
-  document.getElementById('countProgress').textContent = cols['in-progress'].length;
-  document.getElementById('countDone').textContent = cols.done.length;
-  document.getElementById('countSkipped').textContent = cols.skipped.length;
+  const ids = { todo: 'Todo', 'in-progress': 'Progress', blocked: 'Blocked', done: 'Done', skipped: 'Skipped' };
+  for (const [status, suffix] of Object.entries(ids)) {
+    document.getElementById('stat' + suffix).textContent = cols[status].length;
+    document.getElementById('count' + suffix).textContent = cols[status].length;
+    render('col' + suffix, cols[status]);
+  }
+}
 
-  render('colTodo', cols.todo);
-  render('colProgress', cols['in-progress']);
-  render('colDone', cols.done);
-  render('colSkipped', cols.skipped);
+// `log` is an array of timestamped entries. Older task files used a single `progress` string.
+function renderLog(t) {
+  if (Array.isArray(t.log) && t.log.length) {
+    return `<ul class="criteria-list">${t.log.map(e => `<li>${esc(e)}</li>`).join('')}</ul>`;
+  }
+  if (typeof t.log === 'string' && t.log) return `<div class="info-block">${esc(t.log)}</div>`;
+  if (t.progress) return `<div class="info-block">${esc(t.progress)}</div>`;
+  return '<p class="empty">No activity recorded yet</p>';
 }
 
 function renderTags(tags) {
@@ -237,7 +249,8 @@ function render(containerId, tasks) {
       <div class="card-bottom">
         ${renderTags(t.tags)}
         <span class="badge badge-priority">P${t.priority}</span>
-        <span class="card-criteria">${t.acceptanceCriteria.length} criteria</span>
+        ${t.attempts > 0 ? `<span class="badge badge-attempts">${t.attempts}/3 fails</span>` : ''}
+        <span class="card-criteria">${(t.acceptanceCriteria || []).length} criteria</span>
       </div>
       ${t.agents && t.agents.length ? `<div class="card-agents">${t.agents.map(esc).join(' → ')}</div>` : ''}
     </div>
@@ -252,7 +265,7 @@ function openModal(id) {
   document.getElementById('modalTitle').textContent = t.title;
 
   const tagBadges = renderTags(t.tags);
-  const statusMap = { todo: 'Todo', 'in-progress': 'In Progress', done: 'Done', skipped: 'Skipped' };
+  const statusMap = { todo: 'Todo', 'in-progress': 'In Progress', blocked: 'Blocked', done: 'Done', skipped: 'Skipped' };
   const statusLabel = statusMap[t.status] || t.status;
 
   let html = `
@@ -260,9 +273,11 @@ function openModal(id) {
       ${tagBadges}
       <span class="meta-chip">Priority ${t.priority}</span>
       <span class="meta-chip">${esc(statusLabel)}</span>
+      ${t.attempts > 0 ? `<span class="badge badge-attempts">${t.attempts}/3 QA fails</span>` : ''}
+      ${t.commit_sha ? `<span class="badge badge-commit">${esc(String(t.commit_sha).slice(0, 7))}</span>` : ''}
     </div>
 
-    ${t.agents && t.agents.length ? `<div class="modal-section"><h3>Agent Chain</h3><p style="font-family:'SF Mono',Monaco,monospace;font-size:13px;color:var(--cyan)">${t.agents.map(esc).join(' → ')}</p></div>` : ''}
+    ${t.agents && t.agents.length ? `<div class="modal-section"><h3>Pipeline</h3><p style="font-family:'SF Mono',Monaco,monospace;font-size:13px;color:var(--cyan)">${esc(t.agents[0])}${t.agents.length > 1 ? ` → [ ${t.agents.slice(1).map(esc).join(' ‖ ')} ]` : ''}</p><p style="font-size:11px;color:var(--text3);margin-top:6px">task-worker implements, then the verifiers run concurrently in lanes</p></div>` : ''}
 
     <div class="modal-section">
       <h3>Description</h3>
@@ -277,8 +292,8 @@ function openModal(id) {
     </div>
 
     <div class="modal-section">
-      <h3>Progress</h3>
-      ${t.progress ? `<div class="info-block">${esc(t.progress)}</div>` : '<p class="empty">No progress recorded yet</p>'}
+      <h3>Activity Log</h3>
+      ${renderLog(t)}
     </div>
 
     <div class="modal-section">
